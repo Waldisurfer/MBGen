@@ -236,3 +236,54 @@ Return a JSON array where each item has this exact shape:
 
   return parsed as ParsedCampaignSuggestion[];
 }
+
+// ─── Banner suggestions ───────────────────────────────────────────────────────
+
+export interface BannerSuggestions {
+  headlines: string[];
+  subheadlines: string[];
+  ctas: string[];
+  colorRecommendations: Array<{ gradientId: string; reason: string }>;
+  marketingAngles: Array<{ angle: string; headline: string; sub: string; cta: string }>;
+}
+
+export async function generateBannerSuggestions(
+  brandInfo: string,
+  gradientNames: string,
+): Promise<BannerSuggestions> {
+  const response = await getClient().messages.create({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `You are a creative marketing strategist specialised in visual ad design.
+Given this brand information, generate compelling banner ad suggestions.
+
+Brand info:
+${brandInfo}
+
+Available gradient IDs (use ONLY these exact strings, pick the most fitting 3): ${gradientNames}
+
+Return ONLY valid JSON with this exact shape, no other text:
+{
+  "headlines": ["...", "...", "...", "...", "..."],
+  "subheadlines": ["...", "...", "...", "...", "..."],
+  "ctas": ["...", "...", "...", "...", "..."],
+  "colorRecommendations": [
+    { "gradientId": "<id>", "reason": "one sentence why this fits the brand" },
+    { "gradientId": "<id>", "reason": "one sentence why this fits the brand" },
+    { "gradientId": "<id>", "reason": "one sentence why this fits the brand" }
+  ],
+  "marketingAngles": [
+    { "angle": "Urgency", "headline": "...", "sub": "...", "cta": "..." },
+    { "angle": "Social Proof", "headline": "...", "sub": "...", "cta": "..." },
+    { "angle": "Value Proposition", "headline": "...", "sub": "...", "cta": "..." }
+  ]
+}`,
+    }],
+  });
+  const text = getText(response);
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Claude did not return valid JSON for banner suggestions');
+  return JSON.parse(match[0]) as BannerSuggestions;
+}

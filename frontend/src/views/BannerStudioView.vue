@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue';
 import html2canvas from 'html2canvas';
 import Button from '@/components/ui/Button.vue';
+import { useBannerAI } from '@/composables/useBannerAI';
+import type { BannerSuggestions } from '@/composables/useBannerAI';
 
 // ─── Shared data ─────────────────────────────────────────────────────────────
 
@@ -98,6 +100,21 @@ const autoVariations  = ref<BannerVariation[]>([]);
 const bannerRefs      = ref<Record<number, HTMLElement>>({});
 const downloadingAll  = ref(false);
 const downloadProgress = ref(0);
+
+// ─── AI Ideas state ───────────────────────────────────────────────────────────
+
+const aiPanelOpen    = ref(false);
+const pinnedGradient = ref<string | null>(null);
+const { isLoading: aiLoading, error: aiError, suggestions, suggest } = useBannerAI();
+
+// ─── Expanded view state (Similar / Counter) ──────────────────────────────────
+
+interface ExpandedView { mode: 'similar' | 'counter'; sourceIndex: number; sourceLabel: string; }
+const expandedView        = ref<ExpandedView | null>(null);
+const expandedVariations  = ref<BannerVariation[]>([]);
+const expandedRefs        = ref<Record<number, HTMLElement>>({});
+const downloadingExpanded = ref(false);
+const downloadExpandedProgress = ref(0);
 
 const VARIATION_COUNTS = [2, 4, 6, 8, 10, 12];
 
@@ -280,11 +297,11 @@ function buildTextVariants(info: string, count: number): Pick<BannerVariation, '
   return Array.from({ length: count }, (_, i) => templates[i % templates.length]);
 }
 
-function buildVisualCombos(count: number): Pick<BannerVariation, 'gradientId' | 'fontId' | 'positionId'>[] {
+function buildVisualCombos(count: number, forcedFirstId: string | null = null): Pick<BannerVariation, 'gradientId' | 'fontId' | 'positionId'>[] {
   // Spread gradients evenly across the pool for max visual variety
   const gStep = Math.ceil(GRADIENTS.length / count);
   return Array.from({ length: count }, (_, i) => ({
-    gradientId: GRADIENTS[(i * gStep) % GRADIENTS.length].id,
+    gradientId: (i === 0 && forcedFirstId) ? forcedFirstId : GRADIENTS[(i * gStep) % GRADIENTS.length].id,
     fontId:     FONT_PAIRS[i % FONT_PAIRS.length].id,
     positionId: POSITIONS[i % POSITIONS.length].id,
   }));
@@ -292,8 +309,11 @@ function buildVisualCombos(count: number): Pick<BannerVariation, 'gradientId' | 
 
 function generateAuto() {
   if (!brandInfo.value.trim()) return;
+  expandedView.value = null;
+  expandedVariations.value = [];
+  expandedRefs.value = {};
   const text   = buildTextVariants(brandInfo.value, variationCount.value);
-  const visual = buildVisualCombos(variationCount.value);
+  const visual = buildVisualCombos(variationCount.value, pinnedGradient.value);
   autoVariations.value = Array.from({ length: variationCount.value }, (_, i) => ({
     ...text[i],
     ...visual[i],
@@ -330,6 +350,100 @@ async function downloadAll() {
   }
   downloadingAll.value = false;
   downloadProgress.value = 0;
+}
+
+// ─── AI ideas ─────────────────────────────────────────────────────────────────
+
+function applyAngle(ma: NonNullable<BannerSuggestions>['marketingAngles'][number]) {
+  brandInfo.value = `${ma.headline}. ${ma.sub}. ${ma.cta}`;
+  generateAuto();
+}
+
+// ─── Similar / Counter generation ────────────────────────────────────────────
+
+const DARK_BG_IDS  = ['royal', 'sunset', 'ocean', 'fire', 'midnight', 'rose', 'sage', 'carbon', 'deep', 'wine'];
+const LIGHT_BG_IDS = ['forest', 'gold', 'aurora', 'peach', 'spring', 'ice'];
+
+function generateSimilarTo(i: number) {
+  const source  = autoVariations.value[i];
+  const srcGIdx = GRADIENTS.findIndex(g => g.id === source.gradientId);
+  const srcFIdx = FONT_PAIRS.findIndex(f => f.id === source.fontId);
+  const srcPIdx = POSITIONS.findIndex(p => p.id === source.positionId);
+  const adjGrads = [0, 1, 2, -1, -2, 3].map(o => GRADIENTS[(srcGIdx + o + 16) % 16]);
+  const altFont  = FONT_PAIRS[(srcFIdx + 1) % 6];
+  const adjPos   = [0, 1, -1].map(o => POSITIONS[(srcPIdx + o + 4) % 4]);
+  const text     = buildTextVariants(brandInfo.value, 20);
+  expandedVariations.value = Array.from({ length: 20 }, (_, idx) => ({
+    ...text[idx],
+    gradientId: adjGrads[idx % 6].id,
+    fontId:     idx % 4 === 3 ? altFont.id : source.fontId,
+    positionId: adjPos[idx % 3].id,
+  }));
+  expandedView.value = { mode: 'similar', sourceIndex: i, sourceLabel: `#${i + 1}` };
+  expandedRefs.value = {};
+}
+
+function generateCounterTo(i: number) {
+  const source   = autoVariations.value[i];
+  const srcGrad  = GRADIENTS.find(g => g.id === source.gradientId)!;
+  const srcFIdx  = FONT_PAIRS.findIndex(f => f.id === source.fontId);
+  const srcPIdx  = POSITIONS.findIndex(p => p.id === source.positionId);
+  const pool       = srcGrad.dark ? DARK_BG_IDS : LIGHT_BG_IDS;
+  const cFontIdx   = (srcFIdx + 3) % 6;
+  const mixFontIdx = (srcFIdx + 2) % 6;
+  const cPosIdx    = (srcPIdx + 2) % 4;
+  const aPosIdx    = (srcPIdx + 3) % 4;
+  const srcCta = source.cta.toLowerCase();
+  const counterCtas = srcCta.includes('start') || srcCta.includes('try')
+    ? ['Go Pro', 'VIP Access', 'Unlock Everything', 'Power User Plan', 'Enterprise Access', 'All-in Plan', 'Upgrade Now', 'Full Suite', 'Advanced Features', 'Skip the Trial']
+    : srcCta.includes('shop') || srcCta.includes('buy') || srcCta.includes('sale')
+    ? ['Exclusive Members Only', 'No Sales. Just Value.', 'Subscribe & Save', 'Loyalty Rewards', 'Annual Plan', 'Insider Deal', 'Premium Access', 'VIP Pricing', 'Members Only', 'Best Price Guarantee']
+    : srcCta.includes('download') || srcCta.includes('app')
+    ? ['Web Version', 'No Install Needed', 'Cloud Access', 'Browser-Based', 'Desktop App', 'API Access', 'White-Label', 'Team Edition', 'Offline Mode', 'Enterprise Deploy']
+    : ['See It in Action', 'Watch the Demo', 'Compare Plans', 'Read Case Studies', 'Talk to Sales', 'Request a Quote', 'Schedule a Call', 'View Pricing', 'Meet the Team', 'Our Story'];
+  const text = buildTextVariants(brandInfo.value, 20);
+  expandedVariations.value = Array.from({ length: 20 }, (_, idx) => ({
+    ...text[idx],
+    cta:        counterCtas[idx % counterCtas.length],
+    gradientId: pool[idx % pool.length],
+    fontId:     idx % 5 === 4 ? FONT_PAIRS[mixFontIdx].id : FONT_PAIRS[cFontIdx].id,
+    positionId: idx % 3 === 0 ? POSITIONS[aPosIdx].id : POSITIONS[cPosIdx].id,
+  }));
+  expandedView.value = { mode: 'counter', sourceIndex: i, sourceLabel: `#${i + 1}` };
+  expandedRefs.value = {};
+}
+
+function backToAll() {
+  expandedView.value = null;
+  expandedVariations.value = [];
+  expandedRefs.value = {};
+}
+
+async function downloadExpanded(index: number) {
+  const el = expandedRefs.value[index];
+  if (!el) return;
+  await document.fonts.ready;
+  const canvas = await html2canvas(el, {
+    scale: 4, useCORS: true, allowTaint: true, backgroundColor: null, logging: false,
+  });
+  const v = expandedVariations.value[index];
+  const a = document.createElement('a');
+  a.download = `banner-${expandedView.value?.mode}-${index + 1}-${v.gradientId}-${v.fontId}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+async function downloadAllExpanded() {
+  if (downloadingExpanded.value) return;
+  downloadingExpanded.value = true;
+  downloadExpandedProgress.value = 0;
+  for (let i = 0; i < expandedVariations.value.length; i++) {
+    await downloadExpanded(i);
+    downloadExpandedProgress.value = i + 1;
+    await new Promise(r => setTimeout(r, 450));
+  }
+  downloadingExpanded.value = false;
+  downloadExpandedProgress.value = 0;
 }
 
 // ─── Manual export ────────────────────────────────────────────────────────────
@@ -591,6 +705,100 @@ onMounted(() => {
             </div>
           </section>
 
+          <!-- AI Ideas -->
+          <section>
+            <button
+              class="w-full flex items-center justify-between text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-800 transition-colors"
+              @click="aiPanelOpen = !aiPanelOpen"
+            >
+              <span>✦ AI Ideas</span>
+              <span class="text-base leading-none">{{ aiPanelOpen ? '−' : '+' }}</span>
+            </button>
+
+            <div v-if="aiPanelOpen" class="mt-3 space-y-3">
+              <Button
+                size="sm"
+                class="w-full"
+                :loading="aiLoading"
+                :disabled="!brandInfo.trim() || aiLoading"
+                @click="suggest(brandInfo)"
+              >
+                {{ aiLoading ? 'Generating ideas…' : 'Generate AI ideas' }}
+              </Button>
+
+              <p v-if="aiError" class="text-xs text-red-500">{{ aiError }}</p>
+
+              <template v-if="suggestions">
+                <!-- Headlines -->
+                <div>
+                  <p class="text-xs text-gray-400 mb-1 font-medium">Headlines</p>
+                  <button
+                    v-for="h in suggestions.headlines" :key="h"
+                    class="block w-full text-left text-xs text-gray-700 hover:text-brand-600 py-1 border-b border-gray-100 last:border-0 truncate transition-colors"
+                    :title="h"
+                    @click="brandInfo = h"
+                  >{{ h }}</button>
+                </div>
+
+                <!-- Subheadlines -->
+                <div>
+                  <p class="text-xs text-gray-400 mb-1 font-medium">Subheadlines</p>
+                  <button
+                    v-for="s in suggestions.subheadlines" :key="s"
+                    class="block w-full text-left text-xs text-gray-700 hover:text-brand-600 py-1 border-b border-gray-100 last:border-0 truncate transition-colors"
+                    :title="s"
+                    @click="brandInfo += '\n' + s"
+                  >{{ s }}</button>
+                </div>
+
+                <!-- CTAs -->
+                <div>
+                  <p class="text-xs text-gray-400 mb-1 font-medium">CTA ideas</p>
+                  <div class="flex flex-wrap gap-1.5">
+                    <button
+                      v-for="c in suggestions.ctas" :key="c"
+                      class="px-2.5 py-1 text-xs bg-gray-100 hover:bg-brand-50 hover:text-brand-700 text-gray-700 rounded-lg transition-colors"
+                      @click="brandInfo += '\n' + c"
+                    >{{ c }}</button>
+                  </div>
+                </div>
+
+                <!-- Color recommendations -->
+                <div>
+                  <p class="text-xs text-gray-400 mb-1 font-medium">Suggested colors</p>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      v-for="cr in suggestions.colorRecommendations" :key="cr.gradientId"
+                      :title="cr.reason"
+                      :style="{ background: GRADIENTS.find(g => g.id === cr.gradientId)?.css ?? '#ccc' }"
+                      :class="[
+                        'w-8 h-8 rounded-lg transition-all',
+                        pinnedGradient === cr.gradientId
+                          ? 'ring-2 ring-brand-600 ring-offset-1 scale-110'
+                          : 'hover:scale-110',
+                      ]"
+                      @click="pinnedGradient = pinnedGradient === cr.gradientId ? null : cr.gradientId"
+                    />
+                  </div>
+                  <p v-if="pinnedGradient" class="text-xs text-brand-600 mt-1">Pinned as first variation</p>
+                </div>
+
+                <!-- Marketing angles -->
+                <div>
+                  <p class="text-xs text-gray-400 mb-1 font-medium">Marketing angles</p>
+                  <button
+                    v-for="ma in suggestions.marketingAngles" :key="ma.angle"
+                    class="w-full text-left px-2.5 py-2 rounded-lg border border-gray-200 hover:border-brand-400 hover:bg-brand-50 text-xs mb-1.5 transition-colors"
+                    @click="applyAngle(ma)"
+                  >
+                    <span class="font-semibold text-gray-700 block">{{ ma.angle }}</span>
+                    <span class="text-gray-400 truncate block mt-0.5">{{ ma.headline }}</span>
+                  </button>
+                </div>
+              </template>
+            </div>
+          </section>
+
           <Button
             class="w-full"
             :disabled="!brandInfo.trim()"
@@ -605,80 +813,155 @@ onMounted(() => {
       <!-- Right panel: grid -->
       <main class="flex-1 overflow-auto bg-gray-50 p-8">
 
-        <!-- Empty state -->
-        <div v-if="autoVariations.length === 0" class="flex flex-col items-center justify-center h-full gap-3 text-center">
-          <div class="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center text-2xl">✦</div>
-          <p class="text-sm font-medium text-gray-700">Paste your brand info and click Generate</p>
-          <p class="text-xs text-gray-400 max-w-xs">The generator will create {{ variationCount }} unique banner variations using different gradients, fonts, and layouts.</p>
-        </div>
-
-        <!-- Results header -->
-        <div v-else class="flex items-center justify-between mb-5">
-          <div>
-            <p class="text-sm font-semibold text-gray-900">{{ autoVariations.length }} variations · {{ autoActiveSize.name }}</p>
-            <p class="text-xs text-gray-400 mt-0.5">{{ autoActiveSize.label }}px · exported at 4× resolution</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span v-if="downloadingAll" class="text-xs text-gray-400">
-              Downloading {{ downloadProgress }}/{{ autoVariations.length }}...
-            </span>
-            <Button
-              variant="secondary"
-              size="sm"
-              :loading="downloadingAll"
-              @click="downloadAll"
+        <!-- ── Expanded view (Similar / Counter) ──────────────────────────────── -->
+        <template v-if="expandedView">
+          <!-- Header -->
+          <div class="flex items-center gap-3 mb-5">
+            <button
+              class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors shrink-0"
+              @click="backToAll"
             >
-              Download all
-            </Button>
+              ← Back
+            </button>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-gray-900 capitalize">
+                20 {{ expandedView.mode }} variations of {{ expandedView.sourceLabel }}
+              </p>
+              <p class="text-xs text-gray-400 mt-0.5">{{ autoActiveSize.label }}px · exported at 4× resolution</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span v-if="downloadingExpanded" class="text-xs text-gray-400">
+                Downloading {{ downloadExpandedProgress }}/20...
+              </span>
+              <Button variant="secondary" size="sm" :loading="downloadingExpanded" @click="downloadAllExpanded">
+                Download all 20
+              </Button>
+            </div>
           </div>
-        </div>
 
-        <!-- Banner grid -->
-        <div
-          v-if="autoVariations.length > 0"
-          class="grid gap-4"
-          :style="{ gridTemplateColumns: `repeat(${Math.min(autoVariations.length, variationCount <= 4 ? 2 : variationCount <= 8 ? 3 : 4)}, minmax(0, 1fr))` }"
-        >
-          <div
-            v-for="(v, i) in autoVariations"
-            :key="i"
-            class="group relative"
-          >
-            <!-- Banner preview -->
-            <div
-              class="rounded-xl overflow-hidden shadow-md"
-              :style="{ aspectRatio: autoActiveSize.ratio }"
-            >
-              <div
-                :ref="(el) => { if (el) bannerRefs[i] = el as HTMLElement }"
-                class="relative w-full h-full"
-                :style="varBannerStyle(v)"
-              >
-                <div :class="varPositionClasses(v)">
-                  <h1 :style="varHeadlineStyle(v, true)">{{ v.headline }}</h1>
-                  <p v-if="v.showSub && v.subheadline" :style="varSubStyle(v, true)">{{ v.subheadline }}</p>
-                  <span v-if="v.showCta && v.cta" :style="varCtaStyle(v, true)">{{ v.cta }}</span>
+          <!-- Expanded grid -->
+          <div class="grid gap-4" style="grid-template-columns: repeat(4, minmax(0, 1fr))">
+            <div v-for="(v, i) in expandedVariations" :key="i" class="group relative">
+              <div class="rounded-xl overflow-hidden shadow-md" :style="{ aspectRatio: autoActiveSize.ratio }">
+                <div
+                  :ref="(el) => { if (el) expandedRefs[i] = el as HTMLElement }"
+                  class="relative w-full h-full"
+                  :style="varBannerStyle(v)"
+                >
+                  <div :class="varPositionClasses(v)">
+                    <h1 :style="varHeadlineStyle(v, true)">{{ v.headline }}</h1>
+                    <p v-if="v.showSub && v.subheadline" :style="varSubStyle(v, true)">{{ v.subheadline }}</p>
+                    <span v-if="v.showCta && v.cta" :style="varCtaStyle(v, true)">{{ v.cta }}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <!-- Hover overlay with download -->
-            <div class="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <button
-                class="bg-white text-gray-900 text-xs font-semibold px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors shadow"
-                @click="downloadSingle(i)"
-              >
-                Download PNG
-              </button>
-            </div>
-
-            <!-- Badge: gradient + font -->
-            <div class="mt-1.5 flex items-center gap-1.5 px-0.5">
-              <div class="w-3 h-3 rounded-full shrink-0" :style="{ background: vGradient(v).css }" />
-              <p class="text-xs text-gray-400 truncate">{{ vGradient(v).name }} · {{ vFont(v).name }}</p>
+              <div class="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <button
+                  class="bg-white text-gray-900 text-xs font-semibold px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors shadow"
+                  @click="downloadExpanded(i)"
+                >
+                  Download PNG
+                </button>
+              </div>
+              <div class="mt-1.5 flex items-center gap-1.5 px-0.5">
+                <div class="w-3 h-3 rounded-full shrink-0" :style="{ background: vGradient(v).css }" />
+                <p class="text-xs text-gray-400 truncate">{{ vGradient(v).name }} · {{ vFont(v).name }}</p>
+              </div>
             </div>
           </div>
-        </div>
+        </template>
+
+        <!-- ── Normal view ─────────────────────────────────────────────────────── -->
+        <template v-else>
+
+          <!-- Empty state -->
+          <div v-if="autoVariations.length === 0" class="flex flex-col items-center justify-center h-full gap-3 text-center">
+            <div class="w-16 h-16 rounded-2xl bg-brand-50 flex items-center justify-center text-2xl">✦</div>
+            <p class="text-sm font-medium text-gray-700">Paste your brand info and click Generate</p>
+            <p class="text-xs text-gray-400 max-w-xs">The generator will create {{ variationCount }} unique banner variations using different gradients, fonts, and layouts.</p>
+          </div>
+
+          <!-- Results header -->
+          <div v-else class="flex items-center justify-between mb-5">
+            <div>
+              <p class="text-sm font-semibold text-gray-900">{{ autoVariations.length }} variations · {{ autoActiveSize.name }}</p>
+              <p class="text-xs text-gray-400 mt-0.5">{{ autoActiveSize.label }}px · exported at 4× resolution</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span v-if="downloadingAll" class="text-xs text-gray-400">
+                Downloading {{ downloadProgress }}/{{ autoVariations.length }}...
+              </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                :loading="downloadingAll"
+                @click="downloadAll"
+              >
+                Download all
+              </Button>
+            </div>
+          </div>
+
+          <!-- Banner grid -->
+          <div
+            v-if="autoVariations.length > 0"
+            class="grid gap-4"
+            :style="{ gridTemplateColumns: `repeat(${Math.min(autoVariations.length, variationCount <= 4 ? 2 : variationCount <= 8 ? 3 : 4)}, minmax(0, 1fr))` }"
+          >
+            <div
+              v-for="(v, i) in autoVariations"
+              :key="i"
+              class="group relative"
+            >
+              <!-- Banner preview -->
+              <div
+                class="rounded-xl overflow-hidden shadow-md"
+                :style="{ aspectRatio: autoActiveSize.ratio }"
+              >
+                <div
+                  :ref="(el) => { if (el) bannerRefs[i] = el as HTMLElement }"
+                  class="relative w-full h-full"
+                  :style="varBannerStyle(v)"
+                >
+                  <div :class="varPositionClasses(v)">
+                    <h1 :style="varHeadlineStyle(v, true)">{{ v.headline }}</h1>
+                    <p v-if="v.showSub && v.subheadline" :style="varSubStyle(v, true)">{{ v.subheadline }}</p>
+                    <span v-if="v.showCta && v.cta" :style="varCtaStyle(v, true)">{{ v.cta }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Hover overlay: download + similar + counter -->
+              <div class="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-2">
+                <button
+                  class="w-full bg-white text-gray-900 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors shadow"
+                  @click="downloadSingle(i)"
+                >
+                  Download PNG
+                </button>
+                <button
+                  class="w-full bg-white/20 border border-white/40 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-white/30 transition-colors"
+                  @click="generateSimilarTo(i)"
+                >
+                  Similar ×20
+                </button>
+                <button
+                  class="w-full bg-white/20 border border-white/40 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-white/30 transition-colors"
+                  @click="generateCounterTo(i)"
+                >
+                  Counter ×20
+                </button>
+              </div>
+
+              <!-- Badge: gradient + font -->
+              <div class="mt-1.5 flex items-center gap-1.5 px-0.5">
+                <div class="w-3 h-3 rounded-full shrink-0" :style="{ background: vGradient(v).css }" />
+                <p class="text-xs text-gray-400 truncate">{{ vGradient(v).name }} · {{ vFont(v).name }}</p>
+              </div>
+            </div>
+          </div>
+
+        </template>
 
       </main>
     </div>

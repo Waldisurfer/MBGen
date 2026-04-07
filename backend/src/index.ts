@@ -17,6 +17,7 @@ import imagesRouter from './routes/images';
 import videoRouter from './routes/video';
 import animationsRouter from './routes/animations';
 import historyRouter from './routes/history';
+import bannerRouter from './routes/banner';
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use('/api/images', imagesRouter);
 app.use('/api/video', videoRouter);
 app.use('/api/animations', animationsRouter);
 app.use('/api/history', historyRouter);
+app.use('/api/banner', bannerRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({
