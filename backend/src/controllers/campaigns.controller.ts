@@ -1,0 +1,94 @@
+import { Request, Response } from 'express';
+import { z } from 'zod';
+import { eq, desc } from 'drizzle-orm';
+import { db } from '../db/client';
+import { campaigns } from '../db/schema';
+import { parseCampaignBrief, parseStrategyDocument } from '../services/claude.service';
+import { getPresignedUploadUrl, generateKey } from '../services/storage.service';
+import type { CampaignFormData } from '../types/api.types';
+
+const AudienceSchema = z.object({
+  demographics: z.string().min(1),
+  psychographics: z.string().min(1),
+  painPoints: z.string().min(1),
+  channels: z.array(z.string()).min(1),
+});
+
+const BrandSchema = z.object({
+  name: z.string().min(1),
+  tone: z.string().min(1),
+  colors: z.array(z.string()),
+  fonts: z.array(z.string()),
+  logoKey: z.string().optional(),
+});
+
+const CampaignSchema = z.object({
+  name: z.string().min(1),
+  strategy: z.string().min(10),
+  audience: AudienceSchema,
+  brand: BrandSchema,
+  inspirationKeys: z.array(z.string()),
+});
+
+export async function listCampaigns(_req: Request, res: Response): Promise<void> {
+  const result = await db
+    .select()
+    .from(campaigns)
+    .orderBy(desc(campaigns.createdAt));
+  res.json(result);
+}
+
+export async function getCampaign(req: Request, res: Response): Promise<void> {
+  const campaign = await db
+    .select()
+    .from(campaigns)
+    .where(eq(campaigns.id, req.params.id as string))
+    .limit(1);
+
+  if (!campaign[0]) {
+    res.status(404).json({ error: 'Campaign not found' });
+    return;
+  }
+  res.json(campaign[0]);
+}
+
+export async function createCampaign(req: Request, res: Response): Promise<void> {
+  const body = CampaignSchema.parse(req.body) as CampaignFormData;
+
+  // Parse structured brief via Claude (synchronous, ~3-5s)
+  const brief = await parseCampaignBrief(body);
+
+  const [campaign] = await db
+    .insert(campaigns)
+    .values({
+      name: body.name,
+      strategy: body.strategy,
+      audience: body.audience,
+      brand: body.brand,
+      brief,
+    })
+    .returning();
+
+  res.status(201).json(campaign);
+}
+
+export async function parseStrategy(req: Request, res: Response): Promise<void> {
+  const { document } = z
+    .object({ document: z.string().min(50, 'Document is too short') })
+    .parse(req.body);
+
+  const suggestions = await parseStrategyDocument(document);
+  res.json({ suggestions });
+}
+
+export async function getUploadUrl(req: Request, res: Response): Promise<void> {
+  const { filename, contentType } = z
+    .object({ filename: z.string().min(1), contentType: z.string().min(1) })
+    .parse(req.query);
+
+  const ext = filename.split('.').pop() ?? 'bin';
+  const key = generateKey('inspirations', `${Date.now()}-${Math.random().toString(36).slice(2)}`, ext);
+  const presignedUrl = await getPresignedUploadUrl(key, contentType as string);
+
+  res.json({ presignedUrl, key });
+}
