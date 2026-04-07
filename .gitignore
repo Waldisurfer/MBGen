@@ -28,6 +28,11 @@ logs/
 
 # TypeScript
 *.tsbuildinfo
+# Compiled backend root-level TS files (drizzle.config.js etc.)
+backend/*.js
+backend/*.js.map
+backend/*.d.ts
+backend/*.d.ts.map
 
 # Test coverage
 coverage/
