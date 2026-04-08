@@ -4,6 +4,9 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { campaigns, generations } from '../db/schema';
 import { generateCopy, rewritePrompt } from '../services/claude.service';
+import { checkSpendLimit, recordSpend } from '../utils/spend';
+import { CLAUDE_COSTS } from '../config/models';
+import { getUserStyleContext } from './styles.controller';
 import type { StructuredBrief } from '../types/api.types';
 
 const GenerateSchema = z.object({
@@ -18,6 +21,9 @@ const InstructSchema = z.object({
 
 export async function generateCopyHandler(req: Request, res: Response): Promise<void> {
   const { campaignId, platform } = GenerateSchema.parse(req.body);
+  const userId = req.user!.userId;
+  const cost = CLAUDE_COSTS.copyGenerate;
+  await checkSpendLimit(userId, req.user!.role, cost);
 
   const [campaign] = await db
     .select()
@@ -32,7 +38,9 @@ export async function generateCopyHandler(req: Request, res: Response): Promise<
 
   const brief = campaign.brief as StructuredBrief;
   const prompt = `Platform: ${platform}\nBrief: ${JSON.stringify(brief)}`;
-  const text = await generateCopy(brief, platform);
+  const styleContext = await getUserStyleContext(userId);
+  const text = await generateCopy(brief, platform, undefined, styleContext);
+  await recordSpend(userId, cost);
 
   const [generation] = await db
     .insert(generations)
@@ -43,10 +51,13 @@ export async function generateCopyHandler(req: Request, res: Response): Promise<
       content: { text },
       promptUsed: prompt,
       status: 'completed',
+      userId,
+      estimatedCostUsd: cost.toString(),
+      actualCostUsd: cost.toString(),
     })
     .returning();
 
-  res.status(201).json(generation);
+  res.status(201).json({ ...generation, costUsd: cost });
 }
 
 export async function instructCopyHandler(req: Request, res: Response): Promise<void> {
@@ -69,11 +80,17 @@ export async function instructCopyHandler(req: Request, res: Response): Promise<
     .where(eq(campaigns.id, existing.campaignId))
     .limit(1);
 
+  const userId = req.user!.userId;
+  const cost = CLAUDE_COSTS.copyGenerate + CLAUDE_COSTS.rewritePrompt;
+  await checkSpendLimit(userId, req.user!.role, cost);
+
   const brief = campaign.brief as StructuredBrief;
   const currentText = (existing.content as { text?: string }).text ?? '';
 
+  const styleContext = await getUserStyleContext(userId);
   const newPrompt = await rewritePrompt(existing.promptUsed, currentText, instruction);
-  const text = await generateCopy(brief, existing.platform, instruction);
+  const text = await generateCopy(brief, existing.platform, instruction, styleContext);
+  await recordSpend(userId, cost);
 
   const [generation] = await db
     .insert(generations)
@@ -84,8 +101,11 @@ export async function instructCopyHandler(req: Request, res: Response): Promise<
       content: { text },
       promptUsed: newPrompt,
       status: 'completed',
+      userId,
+      estimatedCostUsd: cost.toString(),
+      actualCostUsd: cost.toString(),
     })
     .returning();
 
-  res.status(201).json(generation);
+  res.status(201).json({ ...generation, costUsd: cost });
 }

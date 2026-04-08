@@ -9,11 +9,8 @@ import {
 } from '../services/image.service';
 import { downloadAndUpload, generateKey } from '../services/storage.service';
 import { rewritePrompt } from '../services/claude.service';
-import {
-  IMAGE_MODELS,
-  DEFAULT_IMAGE_MODEL_ID,
-  type AspectRatio,
-} from '../config/models';
+import { checkSpendLimit, recordSpend } from '../utils/spend';
+import { IMAGE_MODELS, DEFAULT_IMAGE_MODEL_ID, CLAUDE_COSTS, type AspectRatio } from '../config/models';
 import type { StructuredBrief } from '../types/api.types';
 
 const GenerateSchema = z.object({
@@ -43,6 +40,11 @@ function buildImagePrompt(brief: StructuredBrief, platform: string): string {
 export async function generateImageHandler(req: Request, res: Response): Promise<void> {
   const { campaignId, platform, modelId: rawModelId } = GenerateSchema.parse(req.body);
   const modelId = rawModelId ?? DEFAULT_IMAGE_MODEL_ID;
+  const userId = req.user!.userId;
+
+  const modelConfig = IMAGE_MODELS.find(m => m.id === modelId);
+  const estimatedCost = modelConfig?.estimatedCostUsd ?? 0.04;
+  await checkSpendLimit(userId, req.user!.role, estimatedCost);
 
   const [campaign] = await db
     .select()
@@ -71,10 +73,12 @@ export async function generateImageHandler(req: Request, res: Response): Promise
       status: 'processing',
       externalJobId: predictionId,
       model: modelId,
+      userId,
+      estimatedCostUsd: estimatedCost.toString(),
     })
     .returning();
 
-  res.status(201).json({ ...generation, predictionId });
+  res.status(201).json({ ...generation, predictionId, estimatedCostUsd: estimatedCost });
 }
 
 export async function imageStatusHandler(req: Request, res: Response): Promise<void> {
@@ -91,13 +95,18 @@ export async function imageStatusHandler(req: Request, res: Response): Promise<v
   if (result.status === 'succeeded' && result.outputUrl && generation) {
     const key = generateKey('images', generation.id, 'webp');
     const imageUrl = await downloadAndUpload(result.outputUrl, key);
+    const actualCost = parseFloat(generation.estimatedCostUsd ?? '0.04');
 
     await db
       .update(generations)
-      .set({ content: { imageUrl }, status: 'completed' })
+      .set({ content: { imageUrl }, status: 'completed', actualCostUsd: actualCost.toString() })
       .where(eq(generations.id, generation.id));
 
-    res.json({ status: 'completed', imageUrl, generationId: generation.id });
+    if (generation.userId) {
+      await recordSpend(generation.userId, actualCost);
+    }
+
+    res.json({ status: 'completed', imageUrl, generationId: generation.id, actualCostUsd: actualCost });
     return;
   }
 
@@ -115,9 +124,14 @@ export async function generatePromptHandler(req: Request, res: Response): Promis
   const { prompt, aspectRatio, modelId: rawModelId } = GeneratePromptSchema.parse(req.body);
   const modelId = rawModelId ?? DEFAULT_IMAGE_MODEL_ID;
   const ar = (aspectRatio ?? '1:1') as AspectRatio;
+  const userId = req.user!.userId;
+
+  const modelConfig = IMAGE_MODELS.find(m => m.id === modelId);
+  const estimatedCost = modelConfig?.estimatedCostUsd ?? 0.04;
+  await checkSpendLimit(userId, req.user!.role, estimatedCost);
 
   const { predictionId } = await startImageGeneration(prompt, ar, modelId);
-  res.status(201).json({ predictionId, modelId });
+  res.status(201).json({ predictionId, modelId, estimatedCostUsd: estimatedCost });
 }
 
 export async function quickStatusHandler(req: Request, res: Response): Promise<void> {
@@ -125,6 +139,14 @@ export async function quickStatusHandler(req: Request, res: Response): Promise<v
   const result = await getImagePrediction(predictionId);
 
   if (result.status === 'succeeded' && result.outputUrl) {
+    // Record spend — use default model cost as estimation for direct prompts
+    const userId = req.user?.userId;
+    if (userId) {
+      const modelConfig = IMAGE_MODELS.find(m => m.id === DEFAULT_IMAGE_MODEL_ID);
+      const cost = modelConfig?.estimatedCostUsd ?? 0.04;
+      await recordSpend(userId, cost);
+    }
+
     // If R2 is not configured, return the raw Replicate URL (expires in ~1hr — fine for testing)
     const r2Ready = !!(
       process.env.R2_ACCOUNT_ID &&

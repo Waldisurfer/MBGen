@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth.store';
 
 export interface BannerSuggestions {
   headlines: string[];
@@ -13,13 +14,19 @@ export function useBannerAI() {
   const isLoading   = ref(false);
   const error       = ref<string | null>(null);
   const suggestions = ref<BannerSuggestions | null>(null);
+  const lastCostUsd = ref<number | null>(null);
+  const auth = useAuthStore();
 
   async function suggest(brandInfo: string): Promise<void> {
     isLoading.value   = true;
     error.value       = null;
     suggestions.value = null;
+    lastCostUsd.value = null;
     try {
-      suggestions.value = await api.post<BannerSuggestions>('/banner/suggest', { brandInfo });
+      const result = await api.post<BannerSuggestions & { costUsd?: number }>('/banner/suggest', { brandInfo });
+      lastCostUsd.value = result.costUsd ?? null;
+      suggestions.value = result;
+      void auth.refreshProfile();
     } catch (err) {
       error.value = (err as Error).message;
     } finally {
@@ -32,5 +39,5 @@ export function useBannerAI() {
     error.value       = null;
   }
 
-  return { isLoading, error, suggestions, suggest, clear };
+  return { isLoading, error, suggestions, lastCostUsd, suggest, clear };
 }

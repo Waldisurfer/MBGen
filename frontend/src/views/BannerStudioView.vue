@@ -105,7 +105,7 @@ const downloadProgress = ref(0);
 
 const aiPanelOpen    = ref(false);
 const pinnedGradient = ref<string | null>(null);
-const { isLoading: aiLoading, error: aiError, suggestions, suggest } = useBannerAI();
+const { isLoading: aiLoading, error: aiError, suggestions, lastCostUsd: aiCostUsd, suggest } = useBannerAI();
 
 // ─── Expanded view state (Similar / Counter) ──────────────────────────────────
 
@@ -727,6 +727,7 @@ onMounted(() => {
               </Button>
 
               <p v-if="aiError" class="text-xs text-red-500">{{ aiError }}</p>
+              <p v-if="aiCostUsd !== null && !aiError" class="text-xs text-gray-400 text-right font-mono">cost: ${{ aiCostUsd.toFixed(4) }}</p>
 
               <template v-if="suggestions">
                 <!-- Headlines -->

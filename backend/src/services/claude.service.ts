@@ -58,10 +58,14 @@ Return ONLY valid JSON with this exact shape:
 export async function generateCopy(
   brief: StructuredBrief,
   platform: string,
-  instruction?: string
+  instruction?: string,
+  styleContext?: string
 ): Promise<string> {
   const instructionClause = instruction
     ? `\n\nUser refinement instruction: "${instruction}". Apply this to the output.`
+    : '';
+  const styleClause = styleContext
+    ? `\n\nBrand style guidelines (follow these):\n${styleContext}`
     : '';
 
   const response = await getClient().messages.create({
@@ -70,7 +74,7 @@ export async function generateCopy(
     messages: [
       {
         role: 'user',
-        content: `Write compelling marketing copy for ${platform} based on this campaign brief:
+        content: `Write compelling marketing copy for ${platform} based on this campaign brief:${styleClause}
 
 Core concept: ${brief.coreConcept}
 Key messages: ${brief.keyMessages.join(', ')}
@@ -90,10 +94,14 @@ Write the ${platform} copy now. Include hooks, body copy, and a call to action. 
 export async function generateAnimationConfig(
   brief: StructuredBrief,
   platform: string,
-  instruction?: string
+  instruction?: string,
+  styleContext?: string
 ): Promise<GsapAnimationConfig> {
   const instructionClause = instruction
     ? `\n\nUser refinement: "${instruction}". Apply this to the animation.`
+    : '';
+  const styleClause = styleContext
+    ? `\n\nBrand style guidelines (use these colors/fonts in the animation):\n${styleContext}`
     : '';
 
   const response = await getClient().messages.create({
@@ -102,7 +110,7 @@ export async function generateAnimationConfig(
     messages: [
       {
         role: 'user',
-        content: `Create a GSAP animation configuration for a ${platform} ad.
+        content: `Create a GSAP animation configuration for a ${platform} ad.${styleClause}
 
 Campaign brief:
 - Core concept: ${brief.coreConcept}
@@ -250,14 +258,18 @@ export interface BannerSuggestions {
 export async function generateBannerSuggestions(
   brandInfo: string,
   gradientNames: string,
+  styleContext?: string,
 ): Promise<BannerSuggestions> {
+  const styleClause = styleContext
+    ? `\n\nBrand style guidelines (follow these in your suggestions):\n${styleContext}`
+    : '';
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-5',
     max_tokens: 1024,
     messages: [{
       role: 'user',
       content: `You are a creative marketing strategist specialised in visual ad design.
-Given this brand information, generate compelling banner ad suggestions.
+Given this brand information, generate compelling banner ad suggestions.${styleClause}
 
 Brand info:
 ${brandInfo}

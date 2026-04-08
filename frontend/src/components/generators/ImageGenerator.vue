@@ -14,7 +14,7 @@ const props = defineProps<{
   platform: string;
 }>();
 
-const { status, imageUrl, generationId, error, generate, instruct } = useImages();
+const { status, imageUrl, generationId, error, estimatedCostUsd, generate, instruct } = useImages();
 const models = useImageModels();
 const selectedModel = ref('flux-1.1-pro');
 const imageRef = ref<HTMLElement | null>(null);
@@ -54,6 +54,9 @@ async function handleInstruct(instruction: string) {
           {{ imageUrl ? 'Regenerate' : 'Generate' }}
         </Button>
       </div>
+      <p v-if="estimatedCostUsd !== null" class="text-xs text-gray-400 mt-1 text-right font-mono">
+        {{ status === 'processing' ? 'est.' : 'cost:' }} ${{ estimatedCostUsd.toFixed(4) }}
+      </p>
     </div>
 
     <!-- Model selector -->
