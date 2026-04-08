@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { generateBannerSuggestions } from '../services/claude.service';
+import { checkSpendLimit, recordSpend } from '../utils/spend';
+import { CLAUDE_COSTS } from '../config/models';
 
 const GRADIENT_IDS = [
   'royal', 'sunset', 'ocean', 'fire', 'forest', 'midnight', 'rose', 'sage',
@@ -13,6 +15,9 @@ const SuggestSchema = z.object({
 
 export async function suggestBannerContent(req: Request, res: Response): Promise<void> {
   const { brandInfo } = SuggestSchema.parse(req.body);
+  const cost = CLAUDE_COSTS.bannerSuggest;
+  await checkSpendLimit(req.user!.userId, req.user!.role, cost);
   const suggestions = await generateBannerSuggestions(brandInfo, GRADIENT_IDS.join(', '));
-  res.json(suggestions);
+  await recordSpend(req.user!.userId, cost);
+  res.json({ ...suggestions, costUsd: cost });
 }
