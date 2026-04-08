@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../db/client';
 import { userProfiles } from '../db/schema';
@@ -18,6 +18,13 @@ declare global {
   }
 }
 
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
 export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
@@ -25,8 +32,13 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return;
   }
   try {
-    const payload = jwt.verify(token, process.env.SUPABASE_JWT_SECRET!) as { sub: string };
-    const userId = payload.sub;
+    // Verify token via Supabase — works with both ECC (P-256) and legacy HS256 keys
+    const { data, error } = await getSupabaseAdmin().auth.getUser(token);
+    if (error || !data.user) {
+      res.status(401).json({ error: 'Invalid or expired token' });
+      return;
+    }
+    const userId = data.user.id;
 
     let profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });
 
