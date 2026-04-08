@@ -18,6 +18,9 @@ import videoRouter from './routes/video';
 import animationsRouter from './routes/animations';
 import historyRouter from './routes/history';
 import bannerRouter from './routes/banner';
+import adminRouter from './routes/admin';
+import stylesRouter from './routes/styles';
+import { authMiddleware } from './middleware/auth.middleware';
 
 const app = express();
 
@@ -31,6 +34,12 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(rateLimiter);
 
+// Auth required on all /api routes except /api/health
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  return authMiddleware(req, res, next);
+});
+
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/copy', copyRouter);
 app.use('/api/images', imagesRouter);
@@ -38,6 +47,8 @@ app.use('/api/video', videoRouter);
 app.use('/api/animations', animationsRouter);
 app.use('/api/history', historyRouter);
 app.use('/api/banner', bannerRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/styles', stylesRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({

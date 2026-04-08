@@ -9,6 +9,7 @@ export interface ImageModelConfig {
   badge?: string;
   badgeVariant?: 'success' | 'info' | 'warning' | 'default';
   estimatedSeconds: number;
+  estimatedCostUsd: number;
   buildInput: (prompt: string, aspectRatio: AspectRatio) => Record<string, unknown>;
 }
 
@@ -38,6 +39,7 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     badge: 'Best',
     badgeVariant: 'success',
     estimatedSeconds: 20,
+    estimatedCostUsd: 0.04,
     buildInput: (prompt, aspectRatio) => ({
       prompt,
       aspect_ratio: aspectRatio,
@@ -50,6 +52,7 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     replicateModel: 'black-forest-labs/flux-pro',
     displayName: 'FLUX Pro',
     estimatedSeconds: 15,
+    estimatedCostUsd: 0.055,
     buildInput: (prompt, aspectRatio) => ({
       prompt,
       aspect_ratio: aspectRatio,
@@ -64,6 +67,7 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     badge: 'Fast',
     badgeVariant: 'info',
     estimatedSeconds: 5,
+    estimatedCostUsd: 0.003,
     buildInput: (prompt, aspectRatio) => ({
       prompt,
       aspect_ratio: aspectRatio,
@@ -78,6 +82,7 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     badge: 'Marketing',
     badgeVariant: 'warning',
     estimatedSeconds: 25,
+    estimatedCostUsd: 0.022,
     buildInput: (prompt, aspectRatio) => ({
       prompt,
       size: RECRAFT_SIZES[aspectRatio] ?? '1024x1024',
@@ -91,6 +96,7 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     badge: 'Text',
     badgeVariant: 'default',
     estimatedSeconds: 30,
+    estimatedCostUsd: 0.08,
     buildInput: (prompt, aspectRatio) => ({
       prompt,
       aspect_ratio: IDEOGRAM_RATIOS[aspectRatio] ?? 'ASPECT_1_1',
@@ -103,6 +109,7 @@ export const IMAGE_MODELS: ImageModelConfig[] = [
     replicateModel: 'stability-ai/stable-diffusion-3.5-large',
     displayName: 'SD 3.5 Large',
     estimatedSeconds: 25,
+    estimatedCostUsd: 0.035,
     buildInput: (prompt, aspectRatio) => ({
       prompt,
       aspect_ratio: aspectRatio,
@@ -132,6 +139,7 @@ export interface VideoModelConfig {
   badge?: string;
   badgeVariant?: 'success' | 'info' | 'warning' | 'default';
   estimatedSeconds: number;
+  estimatedCostUsd: number;
 }
 
 export const VIDEO_MODELS: VideoModelConfig[] = [
@@ -142,6 +150,7 @@ export const VIDEO_MODELS: VideoModelConfig[] = [
     badge: 'Premium',
     badgeVariant: 'success',
     estimatedSeconds: 180,
+    estimatedCostUsd: 1.75,
   },
   {
     id: 'wan-2.1-480p',
@@ -151,6 +160,7 @@ export const VIDEO_MODELS: VideoModelConfig[] = [
     badge: 'Fast',
     badgeVariant: 'info',
     estimatedSeconds: 60,
+    estimatedCostUsd: 0.05,
   },
   {
     id: 'minimax-video-01',
@@ -158,6 +168,7 @@ export const VIDEO_MODELS: VideoModelConfig[] = [
     replicateModel: 'minimax/video-01',
     displayName: 'MiniMax Video',
     estimatedSeconds: 90,
+    estimatedCostUsd: 0.10,
   },
   {
     id: 'luma-dream-machine',
@@ -167,6 +178,7 @@ export const VIDEO_MODELS: VideoModelConfig[] = [
     badge: 'Creative',
     badgeVariant: 'warning',
     estimatedSeconds: 90,
+    estimatedCostUsd: 0.14,
   },
 ];
 
@@ -177,3 +189,14 @@ export function getVideoModel(id: string): VideoModelConfig {
   if (!model) throw new Error(`Unknown video model: ${id}`);
   return model;
 }
+
+// --- Claude API costs per call ---
+
+export const CLAUDE_COSTS = {
+  bannerSuggest:     0.003,
+  copyGenerate:      0.002,
+  campaignParse:     0.015,
+  animationGenerate: 0.003,
+  rewritePrompt:     0.001,
+  strategyParse:     0.015,
+} as const;
