@@ -4,6 +4,9 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { campaigns, generations } from '../db/schema';
 import { generateAnimationConfig, rewritePrompt } from '../services/claude.service';
+import { checkSpendLimit, recordSpend } from '../utils/spend';
+import { CLAUDE_COSTS } from '../config/models';
+import { getUserStyleContext } from './styles.controller';
 import type { StructuredBrief } from '../types/api.types';
 
 const GenerateSchema = z.object({
@@ -18,6 +21,9 @@ const InstructSchema = z.object({
 
 export async function generateAnimationHandler(req: Request, res: Response): Promise<void> {
   const { campaignId, platform } = GenerateSchema.parse(req.body);
+  const userId = req.user!.userId;
+  const cost = CLAUDE_COSTS.animationGenerate;
+  await checkSpendLimit(userId, req.user!.role, cost);
 
   const [campaign] = await db
     .select()
@@ -32,8 +38,10 @@ export async function generateAnimationHandler(req: Request, res: Response): Pro
 
   const brief = campaign.brief as StructuredBrief;
   const prompt = `Platform: ${platform}, Visual: ${brief.visualDirection}, Concept: ${brief.coreConcept}`;
+  const styleContext = await getUserStyleContext(userId);
 
-  const animationConfig = await generateAnimationConfig(brief, platform);
+  const animationConfig = await generateAnimationConfig(brief, platform, undefined, styleContext);
+  await recordSpend(userId, cost);
 
   const [generation] = await db
     .insert(generations)
@@ -44,10 +52,13 @@ export async function generateAnimationHandler(req: Request, res: Response): Pro
       content: { animationConfig },
       promptUsed: prompt,
       status: 'completed',
+      userId,
+      estimatedCostUsd: cost.toString(),
+      actualCostUsd: cost.toString(),
     })
     .returning();
 
-  res.status(201).json(generation);
+  res.status(201).json({ ...generation, costUsd: cost });
 }
 
 export async function instructAnimationHandler(req: Request, res: Response): Promise<void> {
@@ -70,11 +81,17 @@ export async function instructAnimationHandler(req: Request, res: Response): Pro
     .where(eq(campaigns.id, existing.campaignId))
     .limit(1);
 
+  const userId = req.user!.userId;
+  const cost = CLAUDE_COSTS.animationGenerate + CLAUDE_COSTS.rewritePrompt;
+  await checkSpendLimit(userId, req.user!.role, cost);
+
   const brief = campaign.brief as StructuredBrief;
   const currentOutput = JSON.stringify((existing.content as { animationConfig?: object }).animationConfig ?? {});
+  const styleContext = await getUserStyleContext(userId);
   const newPrompt = await rewritePrompt(existing.promptUsed, currentOutput, instruction);
 
-  const animationConfig = await generateAnimationConfig(brief, existing.platform, instruction);
+  const animationConfig = await generateAnimationConfig(brief, existing.platform, instruction, styleContext);
+  await recordSpend(userId, cost);
 
   const [generation] = await db
     .insert(generations)
@@ -85,8 +102,11 @@ export async function instructAnimationHandler(req: Request, res: Response): Pro
       content: { animationConfig },
       promptUsed: newPrompt,
       status: 'completed',
+      userId,
+      estimatedCostUsd: cost.toString(),
+      actualCostUsd: cost.toString(),
     })
     .returning();
 
-  res.status(201).json(generation);
+  res.status(201).json({ ...generation, costUsd: cost });
 }

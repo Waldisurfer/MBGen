@@ -54,5 +54,8 @@ export interface Generation {
   status: 'pending' | 'processing' | 'completed' | 'failed';
   externalJobId?: string;
   model?: string | null;
+  estimatedCostUsd?: string | null;
+  actualCostUsd?: string | null;
+  costUsd?: number;
   createdAt: string;
 }

@@ -13,7 +13,7 @@ const props = defineProps<{
   platform: string;
 }>();
 
-const { isLoading, error, generate, instruct } = useCopy();
+const { isLoading, error, lastCostUsd, generate, instruct } = useCopy();
 const generation = ref<Generation | null>(null);
 const contentRef = ref<HTMLElement | null>(null);
 
@@ -51,6 +51,9 @@ function handleCopy() {
           {{ generation ? 'Regenerate' : 'Generate' }}
         </Button>
       </div>
+      <p v-if="lastCostUsd !== null" class="text-xs text-gray-400 mt-1 text-right font-mono">
+        cost: ${{ lastCostUsd.toFixed(4) }}
+      </p>
     </div>
 
     <!-- Content area -->

@@ -91,6 +91,17 @@ export async function deleteStyleHandler(req: Request, res: Response): Promise<v
   res.json({ success: true });
 }
 
+export async function getUserStyleContext(userId: string): Promise<string | undefined> {
+  const profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });
+  const g = profile?.styleGuidelines as { colors?: string[]; fonts?: string[]; variables?: Array<{ name: string; value: string }> } | null;
+  if (!g) return undefined;
+  const parts: string[] = [];
+  if (g.colors?.length) parts.push(`Colors: ${g.colors.join(', ')}`);
+  if (g.fonts?.length) parts.push(`Fonts: ${g.fonts.join(', ')}`);
+  if (g.variables?.length) parts.push(`CSS variables: ${g.variables.map(v => `--${v.name}: ${v.value}`).join('; ')}`);
+  return parts.length ? parts.join('\n') : undefined;
+}
+
 export async function getProfileHandler(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
   const profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });

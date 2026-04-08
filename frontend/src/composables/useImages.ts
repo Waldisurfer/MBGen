@@ -1,6 +1,7 @@
 import { ref, onUnmounted } from 'vue';
 import { api } from '@/lib/api';
 import { useGenerationStore } from '@/stores/generation.store';
+import { useAuthStore } from '@/stores/auth.store';
 import type { Generation } from '@/types/generation.types';
 
 interface ImageStatusResponse {
@@ -17,7 +18,9 @@ export function useImages() {
   const imageUrl = ref<string | null>(null);
   const generationId = ref<string | null>(null);
   const error = ref<string | null>(null);
+  const estimatedCostUsd = ref<number | null>(null);
   const store = useGenerationStore();
+  const auth = useAuthStore();
 
   let poller: ReturnType<typeof setInterval> | null = null;
 
@@ -38,12 +41,13 @@ export function useImages() {
     imageUrl.value = null;
 
     try {
-      const response = await api.post<Generation & { predictionId: string }>(
+      const response = await api.post<Generation & { predictionId: string; estimatedCostUsd?: number }>(
         '/images/generate',
         { campaignId, platform, ...(modelId ? { modelId } : {}) }
       );
 
       generationId.value = response.id;
+      estimatedCostUsd.value = response.estimatedCostUsd ?? null;
       store.setGeneration(response);
 
       poller = setInterval(async () => {
@@ -63,6 +67,7 @@ export function useImages() {
               });
             }
 
+            void auth.refreshProfile();
             stopPolling();
           } else if (
             statusResponse.status === 'failed' ||
@@ -173,5 +178,5 @@ export function useImages() {
 
   onUnmounted(stopPolling);
 
-  return { status, imageUrl, generationId, error, generate, instruct, generateDirect };
+  return { status, imageUrl, generationId, error, estimatedCostUsd, generate, instruct, generateDirect };
 }
