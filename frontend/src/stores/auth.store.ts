@@ -14,11 +14,12 @@ interface UserProfile {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const session   = ref<Session | null>(null);
-  const user      = ref<User | null>(null);
-  const profile   = ref<UserProfile | null>(null);
-  const isLoading = ref(true);
-  const error     = ref<string | null>(null);
+  const session            = ref<Session | null>(null);
+  const user               = ref<User | null>(null);
+  const profile            = ref<UserProfile | null>(null);
+  const isLoading          = ref(true);
+  const isPasswordRecovery = ref(false);
+  const error              = ref<string | null>(null);
 
   const isAuthenticated = computed(() => !!session.value);
   const isAdmin         = computed(() => profile.value?.role === 'admin');
@@ -36,19 +37,45 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function init(): Promise<void> {
     isLoading.value = true;
+
+    // Handle Supabase auth redirect: tokens arrive in the URL hash (#access_token=…)
+    // The router fires before Supabase processes the hash, so we must set the session
+    // manually before calling getSession(), otherwise the user gets bounced to /login
+    // and the hash (with the tokens) is lost.
+    const hash = window.location.hash;
+    if (hash.includes('access_token=')) {
+      const params       = new URLSearchParams(hash.substring(1));
+      const accessToken  = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      const type         = params.get('type');
+      if (accessToken && refreshToken) {
+        await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (type === 'recovery') {
+          isPasswordRecovery.value = true;
+        }
+      }
+    }
+
     const { data } = await supabase.auth.getSession();
     session.value = data.session;
     user.value    = data.session?.user ?? null;
-    if (session.value) await fetchProfile();
+    if (session.value && !isPasswordRecovery.value) await fetchProfile();
     isLoading.value = false;
 
-    supabase.auth.onAuthStateChange(async (_event, s) => {
+    supabase.auth.onAuthStateChange(async (event, s) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        isPasswordRecovery.value = true;
+        session.value = s;
+        user.value    = s?.user ?? null;
+        return;
+      }
       session.value = s;
       user.value    = s?.user ?? null;
-      if (s) {
+      if (s && !isPasswordRecovery.value) {
         await fetchProfile();
-      } else {
-        profile.value = null;
+      } else if (!s) {
+        profile.value            = null;
+        isPasswordRecovery.value = false;
       }
     });
   }
@@ -66,9 +93,26 @@ export const useAuthStore = defineStore('auth', () => {
     if (err) { error.value = err.message; throw err; }
   }
 
+  async function sendPasswordReset(email: string): Promise<void> {
+    error.value = null;
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (err) { error.value = err.message; throw err; }
+  }
+
+  async function updatePassword(newPassword: string): Promise<void> {
+    error.value = null;
+    const { error: err } = await supabase.auth.updateUser({ password: newPassword });
+    if (err) { error.value = err.message; throw err; }
+    isPasswordRecovery.value = false;
+    await fetchProfile();
+  }
+
   async function signOut(): Promise<void> {
     await supabase.auth.signOut();
-    profile.value = null;
+    profile.value            = null;
+    isPasswordRecovery.value = false;
   }
 
   async function refreshProfile(): Promise<void> {
@@ -76,8 +120,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
-    session, user, profile, isLoading, error,
+    session, user, profile, isLoading, isPasswordRecovery, error,
     isAuthenticated, isAdmin, monthlySpend, spendPercent, atLimit,
-    init, signIn, signUp, signOut, refreshProfile,
+    init, signIn, signUp, sendPasswordReset, updatePassword, signOut, refreshProfile,
   };
 });
