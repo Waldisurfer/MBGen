@@ -143,30 +143,41 @@ async function submit() {
     </div>
 
     <!-- Footer nav -->
-    <div class="px-8 py-5 border-t border-gray-200 bg-white flex items-center justify-between max-w-2xl">
-      <Button
-        variant="ghost"
-        :disabled="step === 1"
-        @click="prev"
-      >
-        Back
-      </Button>
+    <div class="px-8 py-5 border-t border-gray-200 bg-white max-w-2xl">
+      <div class="flex items-center justify-between">
+        <Button
+          variant="ghost"
+          :disabled="step === 1"
+          @click="prev"
+        >
+          Back
+        </Button>
 
-      <Button
-        v-if="step < 4"
-        :disabled="!canNext()"
-        @click="next"
-      >
-        Continue
-      </Button>
+        <div class="flex items-center gap-3">
+          <button
+            class="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            @click="router.push('/banner')"
+          >
+            Skip — go to Banner Studio
+          </button>
 
-      <Button
-        v-else
-        :loading="isSubmitting"
-        @click="submit"
-      >
-        Create Campaign
-      </Button>
+          <Button
+            v-if="step < 4"
+            :disabled="!canNext()"
+            @click="next"
+          >
+            Continue
+          </Button>
+
+          <Button
+            v-else
+            :loading="isSubmitting"
+            @click="submit"
+          >
+            Create Campaign
+          </Button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
