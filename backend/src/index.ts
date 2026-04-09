@@ -66,7 +66,7 @@ app.get('/api/health', (_req, res) => {
         process.env.R2_BUCKET_NAME &&
         process.env.R2_PUBLIC_URL
       ),
-      database:       !!process.env.DATABASE_URL,
+      database:       !!(process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('[YOUR-DB-PASSWORD]')),
     },
   });
 });
