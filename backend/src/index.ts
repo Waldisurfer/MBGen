@@ -24,6 +24,7 @@ import { authMiddleware } from './middleware/auth.middleware';
 
 const app = express();
 
+app.set('trust proxy', 1); // Render (and most PaaS) sit behind a reverse proxy
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(
   cors({
