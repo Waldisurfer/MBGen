@@ -1,27 +1,54 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { RouterView, RouterLink, useRoute, useRouter } from 'vue-router';
 import { useUiStore } from '@/stores/ui.store';
 import { useAuthStore } from '@/stores/auth.store';
+import { api } from '@/lib/api';
 
 const route  = useRoute();
 const router = useRouter();
 const ui     = useUiStore();
 const auth   = useAuthStore();
 
-onMounted(() => auth.init());
+interface HealthServices {
+  anthropic: boolean;
+  replicate: boolean;
+  googleAiStudio: boolean;
+  googleVertexAi: boolean;
+  r2: boolean;
+  database: boolean;
+}
+const services = ref<HealthServices | null>(null);
+
+onMounted(async () => {
+  auth.init();
+  try {
+    const h = await api.get<{ services: HealthServices }>('/health');
+    services.value = h.services;
+  } catch { /* backend unreachable — no dots shown */ }
+});
 
 const showSidebar = computed(() => route.path !== '/login');
 
 const navLinks = [
-  { to: '/dashboard',    label: 'Dashboard',       icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
-  { to: '/campaign/new', label: 'New Campaign',     icon: 'M12 4v16m8-8H4' },
-  { to: '/images',       label: 'Image Studio',     icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z' },
-  { to: '/banner',       label: 'Banner Studio',    icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h12M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-12m12-13.5v13.5M6 20.25h12M8.25 20.25v-4.5m7.5 4.5v-4.5' },
-  { to: '/import',       label: 'Import Strategy',  icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' },
-  { to: '/history',      label: 'History',          icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { to: '/settings',     label: 'Settings',         icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
+  { to: '/dashboard',    label: 'Dashboard',       requires: [] as string[],              icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
+  { to: '/campaign/new', label: 'New Campaign',     requires: ['anthropic', 'database'],   icon: 'M12 4v16m8-8H4' },
+  { to: '/images',       label: 'Image Studio',     requires: ['replicate'],               icon: 'M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z' },
+  { to: '/banner',       label: 'Banner Studio',    requires: ['anthropic'],               icon: 'M3.75 3v11.25A2.25 2.25 0 006 16.5h12M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-12m12-13.5v13.5M6 20.25h12M8.25 20.25v-4.5m7.5 4.5v-4.5' },
+  { to: '/import',       label: 'Import Strategy',  requires: ['anthropic'],               icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' },
+  { to: '/history',      label: 'History',          requires: ['database'],                icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+  { to: '/settings',     label: 'Settings',         requires: [] as string[],              icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
 ];
+
+function dotStatus(requires: string[]): 'active' | 'inactive' | null {
+  if (!services.value || requires.length === 0) return null;
+  const s = services.value as Record<string, boolean>;
+  // googleAiStudio or googleVertexAi satisfy a 'google' requirement
+  const resolve = (key: string) => key === 'google'
+    ? (s.googleAiStudio || s.googleVertexAi)
+    : s[key];
+  return requires.every(resolve) ? 'active' : 'inactive';
+}
 
 async function logout() {
   await auth.signOut();
@@ -62,6 +89,12 @@ async function logout() {
             <path stroke-linecap="round" stroke-linejoin="round" :d="link.icon" />
           </svg>
           {{ link.label }}
+          <span
+            v-if="dotStatus(link.requires) !== null"
+            class="ml-auto w-1.5 h-1.5 rounded-full shrink-0"
+            :class="dotStatus(link.requires) === 'active' ? 'bg-green-500' : 'bg-gray-300'"
+            :title="dotStatus(link.requires) === 'active' ? 'All services active' : 'Some services not configured'"
+          />
         </RouterLink>
 
         <!-- Admin link (admin only) -->
