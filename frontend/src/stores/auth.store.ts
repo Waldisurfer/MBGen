@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase';
 import { api } from '@/lib/api';
 import type { Session, User } from '@supabase/supabase-js';
 
+let listenerRegistered = false;
+
 interface UserProfile {
   userId: string;
   role: 'admin' | 'user';
@@ -62,6 +64,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (session.value && !isPasswordRecovery.value) await fetchProfile();
     isLoading.value = false;
 
+    if (listenerRegistered) return;
+    listenerRegistered = true;
     supabase.auth.onAuthStateChange(async (event, s) => {
       if (event === 'PASSWORD_RECOVERY') {
         isPasswordRecovery.value = true;
@@ -84,7 +88,6 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null;
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
     if (err) { error.value = err.message; throw err; }
-    await fetchProfile();
   }
 
   async function signUp(email: string, password: string): Promise<void> {
