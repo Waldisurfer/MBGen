@@ -17,6 +17,13 @@ declare global {
   }
 }
 
+interface JwkKey {
+  kid: string;
+  kty: string;
+  alg: string;
+  [k: string]: unknown;
+}
+
 // JWKS cache: kid → PEM public key
 let jwksCache: Map<string, string> | null = null;
 
@@ -24,12 +31,12 @@ async function fetchJwks(): Promise<Map<string, string>> {
   const url = `${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`JWKS fetch failed: ${res.status}`);
-  const { keys } = await res.json() as { keys: JsonWebKey[] };
+  const { keys } = await res.json() as { keys: JwkKey[] };
   const map = new Map<string, string>();
   for (const key of keys) {
     if (!key.kid) continue;
-    const pub = createPublicKey({ key, format: 'jwk' });
-    map.set(key.kid as string, pub.export({ type: 'spki', format: 'pem' }) as string);
+    const pub = createPublicKey({ key: key as unknown as import('crypto').JsonWebKey, format: 'jwk' });
+    map.set(key.kid, pub.export({ type: 'spki', format: 'pem' }) as string);
   }
   return map;
 }
