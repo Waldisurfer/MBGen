@@ -7,7 +7,8 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Inject Supabase JWT on every request
+// Inject Supabase JWT on every request.
+// On auth expiry responses, we do a one-time refresh+retry fallback below.
 client.interceptors.request.use(async (config) => {
   const { data } = await supabase.auth.getSession();
   if (data.session) {
@@ -18,8 +19,30 @@ client.interceptors.request.use(async (config) => {
 
 client.interceptors.response.use(
   (response) => response.data,
-  (error: unknown) => {
+  async (error: unknown) => {
     if (axios.isAxiosError(error)) {
+      const requestConfig = error.config as (typeof error.config & {
+        __retriedAuth?: boolean;
+      }) | undefined;
+      const status = error.response?.status ?? null;
+      const responseError = (error.response?.data as { error?: string } | undefined)?.error ?? null;
+
+      const shouldRetryWithRefresh = status === 401
+        && responseError === 'Invalid or expired token'
+        && !!requestConfig
+        && !requestConfig.__retriedAuth;
+
+      if (shouldRetryWithRefresh && requestConfig) {
+        requestConfig.__retriedAuth = true;
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+        const refreshedToken = refreshed.session?.access_token;
+        if (refreshedToken && !refreshError) {
+          requestConfig.headers.Authorization = `Bearer ${refreshedToken}`;
+          return client.request(requestConfig);
+        }
+        await supabase.auth.signOut();
+      }
+
       const message =
         (error.response?.data as { error?: string })?.error ?? error.message;
       return Promise.reject(new Error(message));
