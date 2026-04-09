@@ -16,7 +16,7 @@ const TONE_OPTIONS = [
 const props = defineProps<{ modelValue: BrandData }>();
 const emit = defineEmits<{ 'update:modelValue': [value: BrandData] }>();
 
-const colorInput = ref('');
+const colorInput = ref('#000000');
 const fontInput = ref('');
 
 function update(field: keyof BrandData, value: string | string[]) {
