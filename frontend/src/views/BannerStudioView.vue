@@ -100,6 +100,7 @@ const autoVariations  = ref<BannerVariation[]>([]);
 const bannerRefs      = ref<Record<number, HTMLElement>>({});
 const downloadingAll  = ref(false);
 const downloadProgress = ref(0);
+const refineInstruction = ref('');
 
 // ─── AI Ideas state ───────────────────────────────────────────────────────────
 
@@ -307,6 +308,39 @@ function buildVisualCombos(count: number, forcedFirstId: string | null = null): 
   }));
 }
 
+const BRIGHT_GRADIENT_IDS = ['sunset', 'ocean', 'fire', 'forest', 'aurora', 'rose', 'gold', 'spring', 'peach'];
+const DARK_GRADIENT_IDS   = ['midnight', 'carbon', 'deep', 'wine', 'royal', 'sage'];
+
+function applyRefineInstruction(variations: BannerVariation[], instruction: string): BannerVariation[] {
+  if (!instruction.trim()) return variations;
+  const lower = instruction.toLowerCase();
+  let result = [...variations];
+
+  if (/color(ful)?|vibrant|bright|vivid|pop/.test(lower)) {
+    result = result.map((v, i) => ({ ...v, gradientId: BRIGHT_GRADIENT_IDS[i % BRIGHT_GRADIENT_IDS.length] }));
+  } else if (/dark|bold|deep|moody|night/.test(lower)) {
+    result = result.map((v, i) => ({ ...v, gradientId: DARK_GRADIENT_IDS[i % DARK_GRADIENT_IDS.length] }));
+  }
+
+  if (/elegant|luxury|premium|serif/.test(lower)) {
+    result = result.map(v => ({ ...v, fontId: 'elegant' }));
+  } else if (/minimal|clean|simple|modern/.test(lower)) {
+    result = result.map(v => ({ ...v, fontId: 'minimal' }));
+  } else if (/impact|strong|punch|aggressive/.test(lower)) {
+    result = result.map(v => ({ ...v, fontId: 'impact' }));
+  } else if (/dynamic|energetic|fast|action/.test(lower)) {
+    result = result.map(v => ({ ...v, fontId: 'dynamic' }));
+  }
+
+  if (/center(ed)?/.test(lower)) {
+    result = result.map(v => ({ ...v, positionId: 'center' }));
+  } else if (/bottom/.test(lower)) {
+    result = result.map(v => ({ ...v, positionId: 'bottom-left' }));
+  }
+
+  return result;
+}
+
 function generateAuto() {
   if (!brandInfo.value.trim()) return;
   expandedView.value = null;
@@ -314,10 +348,17 @@ function generateAuto() {
   expandedRefs.value = {};
   const text   = buildTextVariants(brandInfo.value, variationCount.value);
   const visual = buildVisualCombos(variationCount.value, pinnedGradient.value);
-  autoVariations.value = Array.from({ length: variationCount.value }, (_, i) => ({
+  const raw = Array.from({ length: variationCount.value }, (_, i) => ({
     ...text[i],
     ...visual[i],
   }));
+  autoVariations.value = applyRefineInstruction(raw, refineInstruction.value);
+  bannerRefs.value = {};
+}
+
+function refineAndRegenerate() {
+  if (!autoVariations.value.length) return;
+  autoVariations.value = applyRefineInstruction([...autoVariations.value], refineInstruction.value);
   bannerRefs.value = {};
 }
 
@@ -807,6 +848,27 @@ onMounted(() => {
           >
             ✦ Generate {{ variationCount }} banners
           </Button>
+
+          <!-- Refine section — shown after first generation -->
+          <section v-if="autoVariations.length > 0" class="space-y-2">
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Refine</p>
+            <p class="text-xs text-gray-400">Describe what to change: "more colorful", "darker", "elegant", "minimal"…</p>
+            <textarea
+              v-model="refineInstruction"
+              rows="2"
+              placeholder="e.g. make it more colorful and bold"
+              class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+              @keydown.enter.prevent="refineAndRegenerate"
+            />
+            <Button
+              size="sm"
+              class="w-full"
+              :disabled="!refineInstruction.trim()"
+              @click="refineAndRegenerate"
+            >
+              Apply refinement
+            </Button>
+          </section>
 
         </div>
       </aside>
