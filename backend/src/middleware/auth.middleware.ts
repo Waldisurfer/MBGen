@@ -64,12 +64,15 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     const publicKey = await getPublicKey(kid);
     const payload = jwt.verify(token, publicKey, { algorithms: ['ES256'] }) as jwt.JwtPayload;
     const userId = payload.sub!;
+    const email: string = (payload.email as string | undefined) ?? '';
 
     let profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });
     if (!profile) {
-      // First ever user gets admin role; all subsequent users get 'user'
-      const count = await db.$count(userProfiles);
-      const role = count === 0 ? 'admin' : 'user';
+      const adminEmails = (process.env.ADMIN_EMAILS ?? '')
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+      const role = adminEmails.includes(email.toLowerCase()) ? 'admin' : 'user';
       [profile] = await db.insert(userProfiles).values({ userId, role }).returning();
     }
 

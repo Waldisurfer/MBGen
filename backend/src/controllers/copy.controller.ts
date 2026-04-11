@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { campaigns, generations } from '../db/schema';
 import { generateCopy, rewritePrompt } from '../services/claude.service';
@@ -28,7 +28,7 @@ export async function generateCopyHandler(req: Request, res: Response): Promise<
   const [campaign] = await db
     .select()
     .from(campaigns)
-    .where(eq(campaigns.id, campaignId))
+    .where(and(eq(campaigns.id, campaignId), eq(campaigns.userId, userId)))
     .limit(1);
 
   if (!campaign) {
@@ -62,11 +62,12 @@ export async function generateCopyHandler(req: Request, res: Response): Promise<
 
 export async function instructCopyHandler(req: Request, res: Response): Promise<void> {
   const { generationId, instruction } = InstructSchema.parse(req.body);
+  const userId = req.user!.userId;
 
   const [existing] = await db
     .select()
     .from(generations)
-    .where(eq(generations.id, generationId))
+    .where(and(eq(generations.id, generationId), eq(generations.userId, userId)))
     .limit(1);
 
   if (!existing) {
@@ -77,10 +78,10 @@ export async function instructCopyHandler(req: Request, res: Response): Promise<
   const [campaign] = await db
     .select()
     .from(campaigns)
-    .where(eq(campaigns.id, existing.campaignId))
+    .where(and(eq(campaigns.id, existing.campaignId), eq(campaigns.userId, userId)))
     .limit(1);
 
-  const userId = req.user!.userId;
+
   const cost = CLAUDE_COSTS.copyGenerate + CLAUDE_COSTS.rewritePrompt;
   await checkSpendLimit(userId, req.user!.role, cost);
 

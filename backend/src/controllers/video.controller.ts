@@ -1,8 +1,13 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import jwt from 'jsonwebtoken';
+import { randomBytes } from 'crypto';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { campaigns, generations } from '../db/schema';
+
+// Short-lived secret for SSE tokens — rotates on server restart (fine for 60s TTL tokens)
+const SSE_TOKEN_SECRET = process.env.SSE_TOKEN_SECRET ?? randomBytes(32).toString('hex');
 import {
   startVideoGeneration,
   pollVideoOperation,
@@ -38,6 +43,7 @@ export async function generateVideoHandler(req: Request, res: Response): Promise
   const { campaignId, platform, modelId: rawModelId } = GenerateSchema.parse(req.body);
   const modelId = rawModelId ?? DEFAULT_VIDEO_MODEL_ID;
   const modelConfig = getVideoModel(modelId);
+  const userId = req.user!.userId;
 
   // Guard: Veo 2 requires Google credentials
   if (modelConfig.provider === 'google' && !process.env.GOOGLE_GENAI_API_KEY) {
@@ -50,7 +56,7 @@ export async function generateVideoHandler(req: Request, res: Response): Promise
   const [campaign] = await db
     .select()
     .from(campaigns)
-    .where(eq(campaigns.id, campaignId))
+    .where(and(eq(campaigns.id, campaignId), eq(campaigns.userId, userId)))
     .limit(1);
 
   if (!campaign) {
@@ -82,19 +88,63 @@ export async function generateVideoHandler(req: Request, res: Response): Promise
       status: 'processing',
       externalJobId,
       model: modelId,
+      userId,
     })
     .returning();
 
   res.status(201).json({ generationId: generation.id, operationName: externalJobId });
 }
 
-export async function videoStatusSSE(req: Request, res: Response): Promise<void> {
+/** Issues a 60-second SSE token for a generation the caller owns.
+ *  Frontend passes this token as ?token= on the EventSource URL because
+ *  the browser EventSource API does not support custom headers.
+ */
+export async function issueVideoSSEToken(req: Request, res: Response): Promise<void> {
   const generationId = req.params.generationId as string;
+  const userId = req.user!.userId;
 
   const [generation] = await db
     .select()
     .from(generations)
-    .where(eq(generations.id, generationId))
+    .where(and(eq(generations.id, generationId), eq(generations.userId, userId)))
+    .limit(1);
+
+  if (!generation) {
+    res.status(404).json({ error: 'Generation not found' });
+    return;
+  }
+
+  const token = jwt.sign({ generationId, userId }, SSE_TOKEN_SECRET, { expiresIn: '60s' });
+  res.json({ token });
+}
+
+export async function videoStatusSSE(req: Request, res: Response): Promise<void> {
+  const generationId = req.params.generationId as string;
+
+  // SSE connections cannot send Authorization headers; validate via short-lived query-param token.
+  const rawToken = req.query.token as string | undefined;
+  if (!rawToken) {
+    res.status(401).json({ error: 'Missing SSE token' });
+    return;
+  }
+
+  let userId: string;
+  try {
+    const payload = jwt.verify(rawToken, SSE_TOKEN_SECRET) as { generationId: string; userId: string };
+    if (payload.generationId !== generationId) {
+      res.status(403).json({ error: 'Token generationId mismatch' });
+      return;
+    }
+    userId = payload.userId;
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired SSE token' });
+    return;
+  }
+
+  const [generation] = await db
+    .select()
+    .from(generations)
+    .where(and(eq(generations.id, generationId), eq(generations.userId, userId)))
     .limit(1);
 
   if (!generation || !generation.externalJobId) {
@@ -105,7 +155,7 @@ export async function videoStatusSSE(req: Request, res: Response): Promise<void>
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL ?? '*');
+  // CORS is already handled globally by the app-level middleware; do not override with a wildcard here
   res.flushHeaders();
 
   let stopped = false;
@@ -198,11 +248,12 @@ export async function videoStatusSSE(req: Request, res: Response): Promise<void>
 
 export async function instructVideoHandler(req: Request, res: Response): Promise<void> {
   const { generationId, instruction, modelId: requestModelId } = InstructSchema.parse(req.body);
+  const userId = req.user!.userId;
 
   const [existing] = await db
     .select()
     .from(generations)
-    .where(eq(generations.id, generationId))
+    .where(and(eq(generations.id, generationId), eq(generations.userId, userId)))
     .limit(1);
 
   if (!existing) {
@@ -245,6 +296,7 @@ export async function instructVideoHandler(req: Request, res: Response): Promise
       status: 'processing',
       externalJobId,
       model: modelId,
+      userId,
     })
     .returning();
 

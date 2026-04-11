@@ -44,14 +44,17 @@ export const useGenerationStore = defineStore('generation', () => {
     result.forEach((g) => generations.value.set(g.id, g));
   }
 
-  function startVideoSSE(
+  async function startVideoSSE(
     generationId: string,
     onUpdate: (data: Partial<Generation> & { videoUrl?: string }) => void
-  ): EventSource {
+  ): Promise<void> {
     const existing = eventSources.value.get(generationId);
     if (existing) existing.close();
 
-    const es = new EventSource(`/api/video/status/${generationId}`);
+    // EventSource cannot send Authorization headers — fetch a short-lived token first
+    const { token } = await api.get<{ token: string }>(`/video/sse-token/${generationId}`);
+    const sseUrl = `${import.meta.env.VITE_API_URL ?? '/api'}/video/status/${generationId}?token=${encodeURIComponent(token)}`;
+    const es = new EventSource(sseUrl);
 
     es.onmessage = (e: MessageEvent) => {
       const data = JSON.parse(e.data as string) as Partial<Generation> & { videoUrl?: string };
@@ -69,7 +72,6 @@ export const useGenerationStore = defineStore('generation', () => {
     };
 
     eventSources.value.set(generationId, es);
-    return es;
   }
 
   function closeSSE(generationId: string): void {

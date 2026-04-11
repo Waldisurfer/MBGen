@@ -7,13 +7,14 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "NODE_TLS_REJECT_UNAUTHORIZED=0 drizzle-kit migrate"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@aws-sdk/client-s3": "^3.717.0",
     "@aws-sdk/s3-request-presigner": "^3.717.0",
     "@google/genai": "^0.7.0",
+    "@sentry/node": "^10.48.0",
     "@supabase/supabase-js": "^2.102.1",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
@@ -33,6 +34,8 @@
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^3.3.2",
     "pg": "^8.13.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
     "replicate": "^1.0.1",
     "typescript": "^5.7.3",
     "zod": "^3.24.1"

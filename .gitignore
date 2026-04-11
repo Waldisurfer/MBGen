@@ -9,6 +9,8 @@ build/
 .env
 .mcp.json
 .env.local
+.env.production
+.env.staging
 .env.*.local
 *.local
 
@@ -49,3 +51,6 @@ coverage/
 
 # Local Netlify folder
 .netlify
+
+# Supabase local CLI temp state
+supabase/.temp/

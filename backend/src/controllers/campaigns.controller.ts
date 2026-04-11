@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import { db } from '../db/client';
 import { campaigns } from '../db/schema';
 import { parseCampaignBrief, parseStrategyDocument } from '../services/claude.service';
@@ -30,10 +30,11 @@ const CampaignSchema = z.object({
   inspirationKeys: z.array(z.string()),
 });
 
-export async function listCampaigns(_req: Request, res: Response): Promise<void> {
+export async function listCampaigns(req: Request, res: Response): Promise<void> {
   const result = await db
     .select()
     .from(campaigns)
+    .where(eq(campaigns.userId, req.user!.userId))
     .orderBy(desc(campaigns.createdAt));
   res.json(result);
 }
@@ -42,7 +43,10 @@ export async function getCampaign(req: Request, res: Response): Promise<void> {
   const campaign = await db
     .select()
     .from(campaigns)
-    .where(eq(campaigns.id, req.params.id as string))
+    .where(and(
+      eq(campaigns.id, req.params.id as string),
+      eq(campaigns.userId, req.user!.userId),
+    ))
     .limit(1);
 
   if (!campaign[0]) {
@@ -61,6 +65,7 @@ export async function createCampaign(req: Request, res: Response): Promise<void>
   const [campaign] = await db
     .insert(campaigns)
     .values({
+      userId: req.user!.userId,
       name: body.name,
       strategy: body.strategy,
       audience: body.audience,

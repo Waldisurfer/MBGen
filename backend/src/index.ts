@@ -3,12 +3,19 @@ import { resolve, dirname } from 'path';
 // Explicit path works regardless of working directory (root vs workspace)
 const envPath = resolve(dirname(require.resolve('../package.json')), '.env');
 config({ path: envPath });
-const _k = process.env.ANTHROPIC_API_KEY ?? '';
-console.log('[ENV] .env path:', envPath);
-console.log('[ENV] ANTHROPIC_API_KEY length:', _k.length, '| first 14:', JSON.stringify(_k.slice(0, 14)), '| last 4:', JSON.stringify(_k.slice(-4)));
+
+import * as Sentry from '@sentry/node';
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN, environment: process.env.NODE_ENV ?? 'development' });
+}
+
+import { logger } from './lib/logger';
+logger.debug({ envPath }, '[ENV] loaded dotenv');
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import pinoHttp from 'pino-http';
 import { rateLimiter } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/errorHandler';
 import campaignsRouter from './routes/campaigns';
@@ -33,6 +40,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: '10mb' }));
+app.use(pinoHttp({ logger }));
 app.use(rateLimiter);
 
 // Auth required on all /api routes except /api/health
@@ -76,7 +84,7 @@ app.use(errorHandler);
 
 const port = parseInt(process.env.PORT ?? '3001', 10);
 app.listen(port, () => {
-  console.log(`[Backend] Running on http://localhost:${port}`);
+  logger.info({ port }, '[Backend] Server started');
 });
 
 export default app;
