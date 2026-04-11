@@ -7,13 +7,35 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Inject Supabase JWT on every request.
-// On auth expiry responses, we do a one-time refresh+retry fallback below.
-client.interceptors.request.use(async (config) => {
+// Singleton refresh promise — deduplicates concurrent refresh attempts so that
+// multiple in-flight requests don't each trigger their own refresh race.
+let activeRefresh: Promise<string | null> | null = null;
+
+async function getFreshToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
-  if (data.session) {
-    config.headers.Authorization = `Bearer ${data.session.access_token}`;
+  if (!data.session) return null;
+
+  const expiresAt = data.session.expires_at ?? 0;
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  // Proactively refresh if expired or within 60 s of expiry
+  if (expiresAt - nowSec < 60) {
+    if (!activeRefresh) {
+      activeRefresh = supabase.auth
+        .refreshSession()
+        .then(({ data: r }) => r.session?.access_token ?? null)
+        .catch(() => null)
+        .finally(() => { activeRefresh = null; });
+    }
+    return activeRefresh;
   }
+
+  return data.session.access_token;
+}
+
+client.interceptors.request.use(async (config) => {
+  const token = await getFreshToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
@@ -21,25 +43,10 @@ client.interceptors.response.use(
   (response) => response.data,
   async (error: unknown) => {
     if (axios.isAxiosError(error)) {
-      const requestConfig = error.config as (typeof error.config & {
-        __retriedAuth?: boolean;
-      }) | undefined;
       const status = error.response?.status ?? null;
-      const responseError = (error.response?.data as { error?: string } | undefined)?.error ?? null;
-
-      const shouldRetryWithRefresh = status === 401
-        && responseError === 'Invalid or expired token'
-        && !!requestConfig
-        && !requestConfig.__retriedAuth;
-
-      if (shouldRetryWithRefresh && requestConfig) {
-        requestConfig.__retriedAuth = true;
-        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-        const refreshedToken = refreshed.session?.access_token;
-        if (refreshedToken && !refreshError) {
-          requestConfig.headers.Authorization = `Bearer ${refreshedToken}`;
-          return client.request(requestConfig);
-        }
+      // If we still get a 401 after the proactive refresh (e.g. refresh token
+      // itself expired), sign the user out so they're not stuck in a 401 loop.
+      if (status === 401) {
         await supabase.auth.signOut();
       }
 
