@@ -1,7 +1,14 @@
 import { ErrorRequestHandler } from 'express';
+import { ZodError } from 'zod';
+import { logger } from '../lib/logger';
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  console.error('[Error]', err);
+  if (err instanceof ZodError) {
+    res.status(400).json({ error: 'Validation failed', issues: err.flatten() });
+    return;
+  }
+
+  logger.error({ err }, '[Error] Unhandled exception');
   const status: number =
     typeof err.status === 'number'
       ? err.status

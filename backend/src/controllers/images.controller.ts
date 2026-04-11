@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { campaigns, generations } from '../db/schema';
 import {
@@ -49,7 +49,7 @@ export async function generateImageHandler(req: Request, res: Response): Promise
   const [campaign] = await db
     .select()
     .from(campaigns)
-    .where(eq(campaigns.id, campaignId))
+    .where(and(eq(campaigns.id, campaignId), eq(campaigns.userId, userId)))
     .limit(1);
 
   if (!campaign) {
@@ -83,11 +83,12 @@ export async function generateImageHandler(req: Request, res: Response): Promise
 
 export async function imageStatusHandler(req: Request, res: Response): Promise<void> {
   const { predictionId } = StatusSchema.parse(req.params);
+  const userId = req.user!.userId;
 
   const [generation] = await db
     .select()
     .from(generations)
-    .where(eq(generations.externalJobId, predictionId))
+    .where(and(eq(generations.externalJobId, predictionId), eq(generations.userId, userId)))
     .limit(1);
 
   const result = await getImagePrediction(predictionId);
@@ -102,9 +103,7 @@ export async function imageStatusHandler(req: Request, res: Response): Promise<v
       .set({ content: { imageUrl }, status: 'completed', actualCostUsd: actualCost.toString() })
       .where(eq(generations.id, generation.id));
 
-    if (generation.userId) {
-      await recordSpend(generation.userId, actualCost);
-    }
+    await recordSpend(userId, actualCost);
 
     res.json({ status: 'completed', imageUrl, generationId: generation.id, actualCostUsd: actualCost });
     return;
@@ -171,11 +170,12 @@ export async function quickStatusHandler(req: Request, res: Response): Promise<v
 
 export async function instructImageHandler(req: Request, res: Response): Promise<void> {
   const { generationId, instruction, modelId: requestModelId } = InstructSchema.parse(req.body);
+  const userId = req.user!.userId;
 
   const [existing] = await db
     .select()
     .from(generations)
-    .where(eq(generations.id, generationId))
+    .where(and(eq(generations.id, generationId), eq(generations.userId, userId)))
     .limit(1);
 
   if (!existing) {
@@ -202,6 +202,7 @@ export async function instructImageHandler(req: Request, res: Response): Promise
       status: 'processing',
       externalJobId: predictionId,
       model: modelId,
+      userId,
     })
     .returning();
 

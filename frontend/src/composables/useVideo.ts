@@ -33,12 +33,10 @@ export function useVideo() {
   const error = ref<string | null>(null);
   const store = useGenerationStore();
 
-  let eventSource: EventSource | null = null;
   let progressTimer: ReturnType<typeof setInterval> | null = null;
 
   function cleanup() {
-    eventSource?.close();
-    eventSource = null;
+    if (generationId.value) store.closeSSE(generationId.value);
     if (progressTimer) {
       clearInterval(progressTimer);
       progressTimer = null;
@@ -72,7 +70,7 @@ export function useVideo() {
         progress.value = Math.min(90, ((Date.now() - startTime) / estimatedMs) * 100);
       }, 1000);
 
-      eventSource = store.startVideoSSE(
+      await store.startVideoSSE(
         response.generationId,
         (data: VideoSSEEvent | Partial<Generation>) => {
           const d = data as VideoSSEEvent;
@@ -125,7 +123,7 @@ export function useVideo() {
         progress.value = Math.min(90, ((Date.now() - startTime) / estimatedMs) * 100);
       }, 1000);
 
-      eventSource = store.startVideoSSE(
+      await store.startVideoSSE(
         response.generationId,
         (data: VideoSSEEvent | Partial<Generation>) => {
           const d = data as VideoSSEEvent;
