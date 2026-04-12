@@ -12,12 +12,25 @@ const password = ref('');
 const loading  = ref(false);
 const message  = ref('');
 
+function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(msg)), ms)
+    ),
+  ]);
+}
+
 async function submit() {
   loading.value = true;
   message.value = '';
   try {
     if (tab.value === 'signin') {
-      await auth.signIn(email.value, password.value);
+      await withTimeout(
+        auth.signIn(email.value, password.value),
+        20_000,
+        'Sign-in timed out — please check your connection and try again.'
+      );
       router.push('/dashboard');
     } else if (tab.value === 'signup') {
       await auth.signUp(email.value, password.value);
@@ -29,7 +42,9 @@ async function submit() {
       tab.value = 'signin';
     }
   } catch (err) {
-    message.value = (err as Error).message;
+    const msg = (err as Error).message ?? String(err);
+    console.error('[login] Sign-in failed:', msg);
+    message.value = msg;
   } finally {
     loading.value = false;
   }
