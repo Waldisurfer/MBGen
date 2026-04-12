@@ -4,7 +4,7 @@ import { and, eq, desc } from 'drizzle-orm';
 import { db } from '../db/client';
 import { campaigns } from '../db/schema';
 import { parseCampaignBrief, parseStrategyDocument } from '../services/claude.service';
-import { getPresignedUploadUrl, generateKey } from '../services/storage.service';
+import { uploadBuffer, getPresignedUploadUrl, generateKey } from '../services/storage.service';
 import type { CampaignFormData } from '../types/api.types';
 
 const AudienceSchema = z.object({
@@ -96,4 +96,18 @@ export async function getUploadUrl(req: Request, res: Response): Promise<void> {
   const presignedUrl = await getPresignedUploadUrl(key, contentType as string);
 
   res.json({ presignedUrl, key });
+}
+
+export async function uploadInspiration(req: Request, res: Response): Promise<void> {
+  if (!req.file) {
+    res.status(400).json({ error: 'No file provided' });
+    return;
+  }
+
+  const contentType = req.file.mimetype;
+  const ext = (req.file.originalname.split('.').pop() ?? 'bin').toLowerCase();
+  const key = generateKey('inspirations', `${Date.now()}-${Math.random().toString(36).slice(2)}`, ext);
+  const url = await uploadBuffer(req.file.buffer, key, contentType);
+
+  res.json({ key, url });
 }

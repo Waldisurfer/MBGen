@@ -66,10 +66,13 @@ export const api = {
   delete: <T>(url: string) => client.delete<T, T>(url),
   postForm: <T>(url: string, data: FormData) =>
     client.post<T, T>(url, data, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  putRaw: (url: string, body: Blob | File, contentType: string) =>
-    fetch(url, {
+  putRaw: async (url: string, body: Blob | File, contentType: string) => {
+    const res = await fetch(url, {
       method: 'PUT',
       body,
       headers: { 'Content-Type': contentType },
-    }),
+    });
+    if (!res.ok) throw new Error(`Upload failed: ${res.status} ${res.statusText}`);
+    return res;
+  },
 };
