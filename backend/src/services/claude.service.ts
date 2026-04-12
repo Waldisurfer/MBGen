@@ -20,7 +20,7 @@ function getText(response: Anthropic.Message): string {
 
 export async function parseCampaignBrief(formData: CampaignFormData): Promise<StructuredBrief> {
   const response = await getClient().messages.create({
-    model: 'claude-opus-4-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 2048,
     messages: [
       {
@@ -69,7 +69,7 @@ export async function generateCopy(
     : '';
 
   const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     messages: [
       {
@@ -105,7 +105,7 @@ export async function generateAnimationConfig(
     : '';
 
   const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 2048,
     messages: [
       {
@@ -156,7 +156,7 @@ export async function rewritePrompt(
   instruction: string
 ): Promise<string> {
   const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 512,
     messages: [
       {
@@ -184,7 +184,7 @@ export async function parseStrategyDocument(
   rawDocument: string
 ): Promise<ParsedCampaignSuggestion[]> {
   const response = await getClient().messages.create({
-    model: 'claude-opus-4-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     messages: [
       {
@@ -264,7 +264,7 @@ export async function generateBannerSuggestions(
     ? `\n\nBrand style guidelines (follow these in your suggestions):\n${styleContext}`
     : '';
   const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     messages: [{
       role: 'user',

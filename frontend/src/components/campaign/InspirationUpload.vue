@@ -16,12 +16,13 @@ async function uploadFile(file: File): Promise<void> {
   error.value = null;
 
   try {
-    const { presignedUrl, key } = await api.get<{ presignedUrl: string; key: string }>(
-      '/campaigns/upload-url',
-      { filename: file.name, contentType: file.type }
-    );
+    const formData = new FormData();
+    formData.append('file', file);
 
-    await api.putRaw(presignedUrl, file, file.type);
+    const { key } = await api.postForm<{ key: string; url: string }>(
+      '/campaigns/upload',
+      formData
+    );
 
     const localUrl = URL.createObjectURL(file);
     uploadedFiles.value.push({ name: file.name, url: localUrl, key });
