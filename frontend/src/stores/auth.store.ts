@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { supabase } from '@/lib/supabase';
-import { api } from '@/lib/api';
 import type { Session, User } from '@supabase/supabase-js';
 
 let listenerRegistered = false;
@@ -31,9 +30,27 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchProfile(): Promise<void> {
     try {
-      profile.value = await api.get<UserProfile>('/styles/profile');
-    } catch {
-      // profile fetch failure is non-fatal
+      // Use a raw fetch instead of the axios client so a 401 here does NOT
+      // trigger the global "sign out on 401" interceptor. The profile endpoint
+      // can legitimately return 401 during a cold-start or key-rotation window
+      // right after sign-in, and we must not cancel the session in that case.
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+
+      const base = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api';
+      const res = await fetch(`${base}/styles/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8_000),
+      });
+
+      if (!res.ok) {
+        console.warn(`[auth] Profile fetch returned ${res.status} — skipping`);
+        return;
+      }
+      profile.value = (await res.json()) as UserProfile;
+    } catch (err) {
+      console.warn('[auth] Profile fetch failed:', err instanceof Error ? err.message : String(err));
     }
   }
 

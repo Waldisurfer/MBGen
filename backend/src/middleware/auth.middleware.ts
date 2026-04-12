@@ -58,14 +58,19 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
+  let stage = 'token_received';
   try {
+    stage = 'decode_header';
     const [rawHeader] = token.split('.');
     const { kid } = JSON.parse(Buffer.from(rawHeader, 'base64url').toString()) as { kid: string };
+    stage = 'get_public_key';
     const publicKey = await getPublicKey(kid);
+    stage = 'verify_jwt';
     const payload = jwt.verify(token, publicKey, { algorithms: ['ES256'] }) as jwt.JwtPayload;
     const userId = payload.sub!;
     const email: string = (payload.email as string | undefined) ?? '';
 
+    stage = 'db_profile_lookup';
     let profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });
     if (!profile) {
       const adminEmails = (process.env.ADMIN_EMAILS ?? '')
@@ -92,7 +97,9 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       monthlySpendUsd: parseFloat(profile.monthlySpendUsd ?? '0'),
     };
     next();
-  } catch {
+  } catch (error) {
+    const err = error as { message?: string; name?: string };
+    console.error(`[auth] JWT validation failed at stage="${stage}":`, err.name, err.message);
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
