@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth.store';
 const router = useRouter();
 const auth   = useAuthStore();
 
-const tab      = ref<'signin' | 'signup' | 'forgot'>('signin');
+const tab      = ref<'signin' | 'signup'>('signin');
 const email    = ref('');
 const password = ref('');
 const loading  = ref(false);
@@ -31,16 +31,10 @@ async function submit() {
         20_000,
         'Sign-in timed out — please check your connection and try again.'
       );
-      router.push('/dashboard');
-    } else if (tab.value === 'signup') {
-      await auth.signUp(email.value, password.value);
-      message.value = 'Check your email to confirm your account, then sign in.';
-      tab.value = 'signin';
     } else {
-      await auth.sendPasswordReset(email.value);
-      message.value = 'Password reset email sent — check your inbox.';
-      tab.value = 'signin';
+      await auth.signUp(email.value, password.value);
     }
+    router.push('/dashboard');
   } catch (err) {
     const msg = (err as Error).message ?? String(err);
     console.error('[login] Sign-in failed:', msg);
@@ -71,8 +65,8 @@ async function submit() {
       <!-- Card -->
       <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
 
-        <!-- Tabs (sign in / sign up only) -->
-        <div v-if="tab !== 'forgot'" class="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1">
+        <!-- Tabs -->
+        <div class="flex gap-1 mb-6 bg-gray-100 rounded-xl p-1">
           <button
             v-for="t in (['signin', 'signup'] as const)"
             :key="t"
@@ -81,15 +75,6 @@ async function submit() {
           >
             {{ t === 'signin' ? 'Sign in' : 'Sign up' }}
           </button>
-        </div>
-
-        <!-- Forgot password header -->
-        <div v-else class="mb-6">
-          <button class="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 mb-3" @click="tab = 'signin'; message = ''">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-            Back to sign in
-          </button>
-          <p class="text-sm text-gray-600">Enter your email and we'll send a password reset link.</p>
         </div>
 
         <form @submit.prevent="submit" class="space-y-4">
@@ -104,7 +89,7 @@ async function submit() {
               placeholder="you@company.com"
             />
           </div>
-          <div v-if="tab !== 'forgot'">
+          <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               v-model="password"
@@ -116,7 +101,7 @@ async function submit() {
             />
           </div>
 
-          <p v-if="message" :class="['text-xs rounded-lg px-3 py-2', message.includes('Check') || message.includes('sent') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600']">
+          <p v-if="message" class="text-xs rounded-lg px-3 py-2 bg-red-50 text-red-600">
             {{ message }}
           </p>
 
@@ -125,16 +110,7 @@ async function submit() {
             :disabled="loading"
             class="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
           >
-            {{ loading ? 'Please wait…' : tab === 'signin' ? 'Sign in' : tab === 'signup' ? 'Create account' : 'Send reset link' }}
-          </button>
-
-          <button
-            v-if="tab === 'signin'"
-            type="button"
-            class="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors"
-            @click="tab = 'forgot'; message = ''"
-          >
-            Forgot password?
+            {{ loading ? 'Please wait…' : tab === 'signin' ? 'Sign in' : 'Create account' }}
           </button>
         </form>
       </div>
