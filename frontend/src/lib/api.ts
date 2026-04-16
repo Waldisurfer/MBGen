@@ -44,10 +44,25 @@ client.interceptors.response.use(
   async (error: unknown) => {
     if (axios.isAxiosError(error)) {
       const status = error.response?.status ?? null;
-      // If we still get a 401 after the proactive refresh (e.g. refresh token
-      // itself expired), sign the user out so they're not stuck in a 401 loop.
+
       if (status === 401) {
-        await supabase.auth.signOut();
+        const config = error.config as (typeof error.config & { _retry?: boolean }) | undefined;
+        if (!config?._retry) {
+          // First 401: try refreshing the session and retrying the request once.
+          // This handles backend cold-starts, JWKS re-fetches, and token edge cases
+          // without immediately signing the user out.
+          const { data: refreshData } = await supabase.auth.refreshSession();
+          if (refreshData.session) {
+            config!._retry = true;
+            config!.headers!.Authorization = `Bearer ${refreshData.session.access_token}`;
+            return client(config!);
+          }
+          // Refresh token is gone — session is truly dead.
+          await supabase.auth.signOut();
+        } else {
+          // Already retried — give up and sign out.
+          await supabase.auth.signOut();
+        }
       }
 
       const message =
