@@ -23,10 +23,8 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
 
-  // Wait for initial auth check
-  if (auth.isLoading) {
-    await auth.init();
-  }
+  // Always wait for the initial auth check (no-op after first call).
+  await auth.init();
 
   if (to.meta.requiresAuth !== false && !auth.isAuthenticated) {
     return '/login';

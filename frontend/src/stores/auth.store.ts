@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
 let listenerRegistered = false;
+let initPromise: Promise<void> | null = null;
 
 interface UserProfile {
   userId: string;
@@ -54,31 +55,43 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function init(): Promise<void> {
-    isLoading.value = true;
+    // Singleton: concurrent callers (App.vue + router guard) share one promise.
+    if (!initPromise) {
+      initPromise = (async () => {
+        isLoading.value = true;
 
-    const { data } = await supabase.auth.getSession();
-    session.value = data.session;
-    user.value    = data.session?.user ?? null;
-    if (session.value) await fetchProfile();
-    isLoading.value = false;
+        const { data } = await supabase.auth.getSession();
+        session.value = data.session;
+        user.value    = data.session?.user ?? null;
+        if (session.value) await fetchProfile();
+        isLoading.value = false;
 
-    if (listenerRegistered) return;
-    listenerRegistered = true;
-    supabase.auth.onAuthStateChange(async (_, s) => {
-      session.value = s;
-      user.value    = s?.user ?? null;
-      if (s) {
-        await fetchProfile();
-      } else {
-        profile.value = null;
-      }
-    });
+        if (listenerRegistered) return;
+        listenerRegistered = true;
+        supabase.auth.onAuthStateChange(async (_, s) => {
+          session.value = s;
+          user.value    = s?.user ?? null;
+          if (s) {
+            await fetchProfile();
+          } else {
+            profile.value = null;
+          }
+        });
+      })();
+    }
+    return initPromise;
   }
 
   async function signIn(email: string, password: string): Promise<void> {
     error.value = null;
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
     if (err) { error.value = err.message; throw err; }
+    // Eagerly sync session so isAuthenticated is true before onAuthStateChange fires,
+    // avoiding a race where router.push('/dashboard') sees a stale null session.
+    if (data.session) {
+      session.value = data.session;
+      user.value = data.session.user;
+    }
   }
 
   async function signUp(email: string, password: string): Promise<void> {
