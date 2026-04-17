@@ -96,8 +96,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function signUp(email: string, password: string): Promise<void> {
     error.value = null;
-    const { error: err } = await supabase.auth.signUp({ email, password });
+    const { data, error: err } = await supabase.auth.signUp({ email, password });
     if (err) { error.value = err.message; throw err; }
+    // If email confirmation is disabled, a session is returned immediately — sync it.
+    if (data.session) {
+      session.value = data.session;
+      user.value = data.session.user;
+      await fetchProfile();
+    }
   }
 
   async function signOut(): Promise<void> {
