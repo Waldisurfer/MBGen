@@ -3,12 +3,16 @@ import { computed, onMounted, ref } from 'vue';
 import { RouterView, RouterLink, useRoute, useRouter } from 'vue-router';
 import { useUiStore } from '@/stores/ui.store';
 import { useAuthStore } from '@/stores/auth.store';
+import { useCampaignStore } from '@/stores/campaign.store';
+import { useGenerationStore } from '@/stores/generation.store';
 import { api } from '@/lib/api';
 
-const route  = useRoute();
-const router = useRouter();
-const ui     = useUiStore();
-const auth   = useAuthStore();
+const route           = useRoute();
+const router          = useRouter();
+const ui              = useUiStore();
+const auth            = useAuthStore();
+const campaignStore   = useCampaignStore();
+const generationStore = useGenerationStore();
 
 interface HealthServices {
   anthropic: boolean;
@@ -21,7 +25,7 @@ interface HealthServices {
 const services = ref<HealthServices | null>(null);
 
 onMounted(async () => {
-  auth.init();
+  await auth.init();
   try {
     const h = await api.get<{ services: HealthServices }>('/health');
     services.value = h.services;
@@ -52,6 +56,9 @@ function dotStatus(requires: string[]): 'active' | 'inactive' | null {
 
 async function logout() {
   await auth.signOut();
+  campaignStore.campaigns = [];
+  campaignStore.clearCurrent();
+  generationStore.clearAll();
   router.push('/login');
 }
 </script>
