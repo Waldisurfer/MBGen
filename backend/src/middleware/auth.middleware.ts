@@ -1,5 +1,4 @@
-import jwt from 'jsonwebtoken';
-import { createPublicKey } from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../db/client';
 import { userProfiles } from '../db/schema';
@@ -17,39 +16,17 @@ declare global {
   }
 }
 
-interface JwkKey {
-  kid: string;
-  kty: string;
-  alg: string;
-  [k: string]: unknown;
-}
-
-// JWKS cache: kid → PEM public key
-let jwksCache: Map<string, string> | null = null;
-
-async function fetchJwks(): Promise<Map<string, string>> {
-  const url = `${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`JWKS fetch failed: ${res.status}`);
-  const { keys } = await res.json() as { keys: JwkKey[] };
-  const map = new Map<string, string>();
-  for (const key of keys) {
-    if (!key.kid) continue;
-    const pub = createPublicKey({ key: key as unknown as import('crypto').JsonWebKey, format: 'jwk' });
-    map.set(key.kid, pub.export({ type: 'spki', format: 'pem' }) as string);
+// Lazily-created Supabase admin client (service role key required for auth.getUser)
+let _supabaseAdmin: ReturnType<typeof createClient> | null = null;
+function getSupabaseAdmin() {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
   }
-  return map;
-}
-
-async function getPublicKey(kid: string): Promise<string> {
-  if (!jwksCache) jwksCache = await fetchJwks();
-  if (!jwksCache.has(kid)) {
-    // Possible key rotation — refetch once before failing
-    jwksCache = await fetchJwks();
-  }
-  const pem = jwksCache.get(kid);
-  if (!pem) throw new Error(`Unknown kid: ${kid}`);
-  return pem;
+  return _supabaseAdmin;
 }
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -58,19 +35,16 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  let stage = 'token_received';
   try {
-    stage = 'decode_header';
-    const [rawHeader] = token.split('.');
-    const { kid } = JSON.parse(Buffer.from(rawHeader, 'base64url').toString()) as { kid: string };
-    stage = 'get_public_key';
-    const publicKey = await getPublicKey(kid);
-    stage = 'verify_jwt';
-    const payload = jwt.verify(token, publicKey, { algorithms: ['ES256'] }) as jwt.JwtPayload;
-    const userId = payload.sub!;
-    const email: string = (payload.email as string | undefined) ?? '';
+    const { data, error } = await getSupabaseAdmin().auth.getUser(token);
+    if (error || !data.user) {
+      res.status(401).json({ error: 'Invalid or expired token' });
+      return;
+    }
 
-    stage = 'db_profile_lookup';
+    const userId = data.user.id;
+    const email: string = data.user.email ?? '';
+
     let profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });
     if (!profile) {
       const adminEmails = (process.env.ADMIN_EMAILS ?? '')
@@ -98,8 +72,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     };
     next();
   } catch (error) {
-    const err = error as { message?: string; name?: string };
-    console.error(`[auth] JWT validation failed at stage="${stage}":`, err.name, err.message);
+    const err = error as { message?: string };
+    console.error('[auth] middleware error:', err.message);
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
