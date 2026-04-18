@@ -28,16 +28,19 @@ export async function startImageGeneration(
 ): Promise<ImageStartResult> {
   const modelConfig = getImageModel(modelId);
   const input = modelConfig.buildInput(prompt, aspectRatio);
+  console.log(`[image.service] startImageGeneration model=${modelConfig.replicateModel} ar=${aspectRatio}`);
 
   const prediction = await getReplicate().predictions.create({
     model: modelConfig.replicateModel,
     input,
   });
 
+  console.log(`[image.service] Prediction created id=${prediction.id} status=${prediction.status}`);
   return { predictionId: prediction.id };
 }
 
 export async function getImagePrediction(predictionId: string): Promise<ImageStatusResult> {
+  console.log(`[image.service] getImagePrediction id=${predictionId}`);
   const prediction = await getReplicate().predictions.get(predictionId);
 
   // Different models return output as string or string[]
@@ -48,6 +51,7 @@ export async function getImagePrediction(predictionId: string): Promise<ImageSta
       ? raw
       : undefined;
 
+  console.log(`[image.service] getImagePrediction status=${prediction.status} outputUrl=${outputUrl ?? 'none'}`);
   return {
     status: prediction.status as ImageStatusResult['status'],
     outputUrl,
