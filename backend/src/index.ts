@@ -35,7 +35,14 @@ app.set('trust proxy', 1); // Render (and most PaaS) sit behind a reverse proxy
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ?? 'http://localhost:5174',
+    origin: (origin, callback) => {
+      const allowed = process.env.FRONTEND_URL ?? 'http://localhost:5174';
+      if (!origin || origin === allowed || /^http:\/\/localhost:\d+$/.test(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   })
 );
