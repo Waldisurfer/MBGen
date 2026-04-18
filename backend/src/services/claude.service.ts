@@ -19,6 +19,7 @@ function getText(response: Anthropic.Message): string {
 }
 
 export async function parseCampaignBrief(formData: CampaignFormData): Promise<StructuredBrief> {
+  console.log(`[claude] parseCampaignBrief name="${formData.name}"`);
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
@@ -50,6 +51,7 @@ Return ONLY valid JSON with this exact shape:
   });
 
   const text = getText(response);
+  console.log(`[claude] parseCampaignBrief raw response length=${text.length}`);
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('No JSON found in Claude response');
   return JSON.parse(jsonMatch[0]) as StructuredBrief;
@@ -61,6 +63,7 @@ export async function generateCopy(
   instruction?: string,
   styleContext?: string
 ): Promise<string> {
+  console.log(`[claude] generateCopy platform=${platform} hasInstruction=${!!instruction} hasStyle=${!!styleContext}`);
   const instructionClause = instruction
     ? `\n\nUser refinement instruction: "${instruction}". Apply this to the output.`
     : '';
@@ -97,6 +100,7 @@ export async function generateAnimationConfig(
   instruction?: string,
   styleContext?: string
 ): Promise<GsapAnimationConfig> {
+  console.log(`[claude] generateAnimationConfig platform=${platform} hasInstruction=${!!instruction} hasStyle=${!!styleContext}`);
   const instructionClause = instruction
     ? `\n\nUser refinement: "${instruction}". Apply this to the animation.`
     : '';
@@ -155,6 +159,7 @@ export async function rewritePrompt(
   currentOutput: string,
   instruction: string
 ): Promise<string> {
+  console.log(`[claude] rewritePrompt instruction="${instruction}"`);
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 512,
@@ -183,6 +188,7 @@ Return ONLY the rewritten prompt text. No explanation, no preamble.`,
 export async function parseStrategyDocument(
   rawDocument: string
 ): Promise<ParsedCampaignSuggestion[]> {
+  console.log(`[claude] parseStrategyDocument length=${rawDocument.length}`);
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
@@ -260,6 +266,7 @@ export async function generateBannerSuggestions(
   gradientNames: string,
   styleContext?: string,
 ): Promise<BannerSuggestions> {
+  console.log(`[claude] generateBannerSuggestions brandInfo="${brandInfo.slice(0, 60)}..." hasStyle=${!!styleContext}`);
   const styleClause = styleContext
     ? `\n\nBrand style guidelines (follow these in your suggestions):\n${styleContext}`
     : '';

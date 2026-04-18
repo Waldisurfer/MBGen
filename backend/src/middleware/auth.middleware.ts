@@ -54,7 +54,9 @@ async function getPublicKey(kid: string): Promise<string> {
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = req.headers.authorization?.replace('Bearer ', '');
+  console.log(`[auth] ${req.method} ${req.path} — token present: ${!!token}`);
   if (!token) {
+    console.warn('[auth] No token provided');
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
@@ -69,15 +71,18 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     const payload = jwt.verify(token, publicKey, { algorithms: ['ES256'] }) as jwt.JwtPayload;
     const userId = payload.sub!;
     const email: string = (payload.email as string | undefined) ?? '';
+    console.log(`[auth] Verified user: ${userId} (${email})`);
 
     stage = 'db_profile_lookup';
     let profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });
     if (!profile) {
+      console.log(`[auth] No profile found for ${userId} — creating`);
       const adminEmails = (process.env.ADMIN_EMAILS ?? '')
         .split(',')
         .map((e) => e.trim().toLowerCase())
         .filter(Boolean);
       const role = adminEmails.includes(email.toLowerCase()) ? 'admin' : 'user';
+      console.log(`[auth] Assigning role: ${role}`);
       [profile] = await db.insert(userProfiles).values({ userId, role }).returning();
     }
 
@@ -85,6 +90,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     const now = new Date();
     const resetAt = new Date(profile.monthlyResetAt);
     if (now.getMonth() !== resetAt.getMonth() || now.getFullYear() !== resetAt.getFullYear()) {
+      console.log(`[auth] Resetting monthly spend for ${userId}`);
       [profile] = await db.update(userProfiles)
         .set({ monthlySpendUsd: '0', monthlyResetAt: now })
         .where(eq(userProfiles.userId, userId))
@@ -96,6 +102,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       role: profile.role as 'admin' | 'user',
       monthlySpendUsd: parseFloat(profile.monthlySpendUsd ?? '0'),
     };
+    console.log(`[auth] req.user set: role=${req.user.role}, spend=$${req.user.monthlySpendUsd}`);
     next();
   } catch (error) {
     const err = error as { message?: string; name?: string };

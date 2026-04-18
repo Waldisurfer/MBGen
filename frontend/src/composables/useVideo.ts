@@ -48,6 +48,7 @@ export function useVideo() {
     platform: string,
     modelId?: string
   ): Promise<string | null> {
+    console.log(`[useVideo] generate campaignId=${campaignId} platform=${platform} modelId=${modelId}`);
     cleanup();
     status.value = 'processing';
     error.value = null;
@@ -62,6 +63,7 @@ export function useVideo() {
       });
 
       generationId.value = response.generationId;
+      console.log(`[useVideo] generate started generationId=${response.generationId} operationName=${response.operationName}`);
 
       const startTime = Date.now();
       const estimatedMs = modelEstimatedMs(modelId);
@@ -74,12 +76,14 @@ export function useVideo() {
         response.generationId,
         (data: VideoSSEEvent | Partial<Generation>) => {
           const d = data as VideoSSEEvent;
+          console.log(`[useVideo] SSE event status=${d.status} videoUrl=${d.videoUrl ?? 'none'}`);
           if (d.status === 'completed' && d.videoUrl) {
             status.value = 'completed';
             videoUrl.value = d.videoUrl;
             progress.value = 100;
             cleanup();
           } else if (d.status === 'failed') {
+            console.warn(`[useVideo] generation failed: ${d.error}`);
             status.value = 'failed';
             error.value = d.error ?? 'Video generation failed';
             cleanup();
@@ -89,6 +93,7 @@ export function useVideo() {
 
       return response.generationId;
     } catch (err) {
+      console.error('[useVideo] generate error:', (err as Error).message);
       status.value = 'failed';
       error.value = (err as Error).message;
       cleanup();
@@ -101,6 +106,7 @@ export function useVideo() {
     instruction: string,
     modelId?: string
   ): Promise<string | null> {
+    console.log(`[useVideo] instruct genId=${genId} instruction="${instruction}" modelId=${modelId}`);
     cleanup();
     status.value = 'processing';
     error.value = null;
@@ -115,6 +121,7 @@ export function useVideo() {
       });
 
       generationId.value = response.generationId;
+      console.log(`[useVideo] instruct started generationId=${response.generationId}`);
 
       const startTime = Date.now();
       const estimatedMs = modelEstimatedMs(modelId);
@@ -127,12 +134,14 @@ export function useVideo() {
         response.generationId,
         (data: VideoSSEEvent | Partial<Generation>) => {
           const d = data as VideoSSEEvent;
+          console.log(`[useVideo] instruct SSE event status=${d.status}`);
           if (d.status === 'completed' && d.videoUrl) {
             status.value = 'completed';
             videoUrl.value = d.videoUrl;
             progress.value = 100;
             cleanup();
           } else if (d.status === 'failed') {
+            console.warn(`[useVideo] instruct failed: ${d.error}`);
             status.value = 'failed';
             error.value = d.error ?? 'Video generation failed';
             cleanup();
@@ -142,6 +151,7 @@ export function useVideo() {
 
       return response.generationId;
     } catch (err) {
+      console.error('[useVideo] instruct error:', (err as Error).message);
       status.value = 'failed';
       error.value = (err as Error).message;
       cleanup();
