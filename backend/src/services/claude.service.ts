@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { z } from 'zod';
 import type {
   CampaignFormData,
   StructuredBrief,
@@ -305,4 +306,215 @@ Return ONLY valid JSON with this exact shape, no other text:
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Claude did not return valid JSON for banner suggestions');
   return JSON.parse(match[0]) as BannerSuggestions;
+}
+
+// ─── Banner HTML generation ───────────────────────────────────────────────────
+
+export interface GeneratedBannerHtml {
+  html: string;
+  desc: string;
+}
+
+export async function generateBannerHtml(
+  brandInfo: string,
+  count: number,
+  refinement?: string,
+  styleContext?: string,
+): Promise<GeneratedBannerHtml[]> {
+  console.log(`[claude] generateBannerHtml count=${count} hasRefinement=${!!refinement} hasStyle=${!!styleContext}`);
+
+  const refinementClause = refinement
+    ? `\n\nUser refinement request: "${refinement}"\nApply this change across all banners.`
+    : '';
+  const styleClause = styleContext
+    ? `\n\nBrand style guidelines:\n${styleContext}`
+    : '';
+
+  const response = await getClient().messages.create(
+    {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 8192, // each banner is ~3-4k tokens; use the full budget
+      messages: [{
+        role: 'user',
+        content: `You are a creative ad designer. Generate exactly ${count} banner ad variation(s) as HTML.${styleClause}${refinementClause}
+
+Brand:
+${brandInfo}
+
+Rules:
+- Each banner: a single <div> with width:600px;height:600px and ALL styles inline.
+- Available fonts (already loaded): Montserrat, Poppins, Raleway, Oswald, Playfair Display, Lato
+- Background: CSS gradient only (no images, no external URLs).
+- Include headline, subheadline, CTA button. High contrast text.
+- Each variation: different color palette, font, layout.
+- No <style> tags. No JavaScript. No animations.
+
+Return ONLY valid JSON, no markdown:
+[{"html":"<div style=\\"width:600px;height:600px;...\\">...</div>","desc":"brief style description"}]`,
+      }],
+    },
+    { timeout: 90_000 }, // 90 s hard timeout on the Anthropic SDK call
+  );
+
+  const text = getText(response);
+  console.log(`[claude] generateBannerHtml raw response (first 300 chars): ${text.slice(0, 300)}`);
+
+  // Strip markdown code fences if present
+  const stripped = text
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+
+  const match = stripped.match(/\[[\s\S]*\]/);
+  if (!match) {
+    console.error('[claude] generateBannerHtml: no JSON array found in response');
+    console.error('[claude] Full response:', text);
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch (e) {
+    console.error('[claude] generateBannerHtml: JSON.parse failed:', (e as Error).message);
+    console.error('[claude] Attempted to parse:', match[0].slice(0, 500));
+    return [];
+  }
+
+  if (!Array.isArray(parsed)) return [];
+
+  return (parsed as unknown[])
+    .filter((item): item is GeneratedBannerHtml =>
+      typeof item === 'object' && item !== null &&
+      typeof (item as Record<string, unknown>).html === 'string' &&
+      typeof (item as Record<string, unknown>).desc === 'string'
+    )
+    .slice(0, count);
+}
+
+// ─── Banner variation generation ──────────────────────────────────────────────
+
+const VALID_GRADIENT_IDS = ['royal','sunset','ocean','fire','forest','midnight',
+  'rose','sage','gold','carbon','aurora','deep','peach','spring','wine','ice'] as const;
+const VALID_FONT_IDS = ['modern','elegant','impact','minimal','luxe','dynamic'] as const;
+const VALID_POSITION_IDS = ['center','bottom-left','bottom-center','top-left'] as const;
+
+const BannerVariationSpecSchema = z.object({
+  headline:    z.string().min(1).max(120),
+  subheadline: z.string().max(200),
+  cta:         z.string().max(60),
+  showSub:     z.boolean(),
+  showCta:     z.boolean(),
+  gradientId:  z.enum(VALID_GRADIENT_IDS),
+  fontId:      z.enum(VALID_FONT_IDS),
+  positionId:  z.enum(VALID_POSITION_IDS),
+});
+
+export type BannerVariationSpec = z.infer<typeof BannerVariationSpecSchema>;
+
+const FALLBACK_VARIATION: BannerVariationSpec = {
+  headline:    'Your Brand',
+  subheadline: 'Discover the difference',
+  cta:         'Get Started',
+  showSub:     true,
+  showCta:     true,
+  gradientId:  'royal',
+  fontId:      'modern',
+  positionId:  'center',
+};
+
+const MODE_DESCRIPTIONS: Record<string, string> = {
+  fresh:     'Fresh generation — maximum variety across all visual dimensions. Explore the full range of color palettes and font styles.',
+  similar:   'Similar style — match the aesthetic direction of the source banner. Stay within the same color temperature and typographic weight class but create entirely new copy.',
+  different: 'Contrasting style — deliberately subvert the source banner\'s aesthetic. Invert the mood, switch color register (dark ↔ light), and use a contrasting font personality.',
+};
+
+export async function generateBannerVariationsFromClaude(
+  brandInfo: string,
+  count: number,
+  mode: 'fresh' | 'similar' | 'different',
+  styleContext?: string,
+  sourceVariation?: BannerVariationSpec,
+): Promise<BannerVariationSpec[]> {
+  console.log(`[claude] generateBannerVariations count=${count} mode=${mode} hasStyle=${!!styleContext} hasSource=${!!sourceVariation}`);
+
+  const styleClause = styleContext
+    ? `\n\nBrand style guidelines (follow these):\n${styleContext}`
+    : '';
+  const sourceClause = (mode !== 'fresh' && sourceVariation)
+    ? `\nSource banner to reference:\n${JSON.stringify(sourceVariation)}\n`
+    : '';
+
+  const response = await getClient().messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: count <= 6 ? 2048 : 3072,
+    messages: [{
+      role: 'user',
+      content: `You are a senior creative director specialised in digital advertising.
+Generate exactly ${count} complete banner ad specifications.${styleClause}
+
+Brand information:
+${brandInfo}
+
+Generation mode: ${MODE_DESCRIPTIONS[mode]}
+${sourceClause}
+CONSTRAINTS — you MUST use only these exact string values:
+gradientId: ${VALID_GRADIENT_IDS.map(v => `"${v}"`).join('|')}
+fontId: ${VALID_FONT_IDS.map(v => `"${v}"`).join('|')}
+positionId: ${VALID_POSITION_IDS.map(v => `"${v}"`).join('|')}
+
+RULES:
+1. Every banner must have a distinct headline — no duplicates across the array.
+2. Vary gradients across banners — avoid using the same gradientId more than twice.
+3. Match the generation mode's aesthetic direction in your gradient and font choices.
+4. Headlines: max 8 words, punchy, no full stops.
+5. Subheadlines: max 15 words, one clear benefit statement.
+6. CTAs: max 4 words, imperative verb + noun.
+7. For 'similar' mode: keep the same visual family (color temperature, font weight class) but generate fresh copy and minor visual variations.
+8. For 'different' mode: deliberately contrast the source — if source used a dark gradient choose light ones; if it used a bold font choose an elegant one; flip position.
+
+Return ONLY a valid JSON array, no markdown, no explanation:
+[
+  {
+    "headline": "...",
+    "subheadline": "...",
+    "cta": "...",
+    "showSub": true,
+    "showCta": true,
+    "gradientId": "...",
+    "fontId": "...",
+    "positionId": "..."
+  }
+]`,
+    }],
+  });
+
+  const text = getText(response);
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) {
+    console.warn('[claude] generateBannerVariations: no JSON array found, returning fallbacks');
+    return Array.from({ length: count }, () => ({ ...FALLBACK_VARIATION }));
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch {
+    console.warn('[claude] generateBannerVariations: JSON parse failed, returning fallbacks');
+    return Array.from({ length: count }, () => ({ ...FALLBACK_VARIATION }));
+  }
+
+  if (!Array.isArray(parsed)) {
+    return Array.from({ length: count }, () => ({ ...FALLBACK_VARIATION }));
+  }
+
+  // Validate each item, replace invalid ones with fallback
+  const validated: BannerVariationSpec[] = (parsed as unknown[]).map((item) => {
+    const result = BannerVariationSpecSchema.safeParse(item);
+    return result.success ? result.data : { ...FALLBACK_VARIATION };
+  });
+
+  // Pad or trim to exactly `count` items
+  while (validated.length < count) validated.push({ ...FALLBACK_VARIATION });
+  return validated.slice(0, count);
 }

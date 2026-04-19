@@ -85,7 +85,8 @@ client.interceptors.response.use(
 export const api = {
   get: <T>(url: string, params?: Record<string, string>) =>
     client.get<T, T>(url, { params }),
-  post: <T>(url: string, data?: unknown) => client.post<T, T>(url, data),
+  post: <T>(url: string, data?: unknown, timeoutMs?: number) =>
+    client.post<T, T>(url, data, timeoutMs ? { timeout: timeoutMs } : undefined),
   put: <T>(url: string, data?: unknown) => client.put<T, T>(url, data),
   delete: <T>(url: string) => client.delete<T, T>(url),
   postForm: <T>(url: string, data: FormData) =>
