@@ -194,6 +194,7 @@ export function getVideoModel(id: string): VideoModelConfig {
 
 export const CLAUDE_COSTS = {
   bannerSuggest:     0.003,
+  bannerGenerate:    0.008,
   copyGenerate:      0.002,
   campaignParse:     0.015,
   animationGenerate: 0.003,
