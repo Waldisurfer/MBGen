@@ -12,6 +12,7 @@ export function useCopy() {
   const auth = useAuthStore();
 
   async function generate(campaignId: string, platform: string): Promise<Generation | null> {
+    console.log(`[useCopy] generate campaignId=${campaignId} platform=${platform}`);
     isLoading.value = true;
     error.value = null;
     lastCostUsd.value = null;
@@ -20,8 +21,10 @@ export function useCopy() {
       lastCostUsd.value = generation.costUsd ?? null;
       store.setGeneration(generation);
       void auth.refreshProfile();
+      console.log(`[useCopy] generate done id=${generation.id} cost=$${generation.costUsd}`);
       return generation;
     } catch (err) {
+      console.error('[useCopy] generate error:', (err as Error).message);
       error.value = (err as Error).message;
       return null;
     } finally {
@@ -30,6 +33,7 @@ export function useCopy() {
   }
 
   async function instruct(generationId: string, instruction: string): Promise<Generation | null> {
+    console.log(`[useCopy] instruct generationId=${generationId} instruction="${instruction}"`);
     isLoading.value = true;
     error.value = null;
     try {
@@ -37,8 +41,10 @@ export function useCopy() {
       lastCostUsd.value = generation.costUsd ?? null;
       store.setGeneration(generation);
       void auth.refreshProfile();
+      console.log(`[useCopy] instruct done id=${generation.id}`);
       return generation;
     } catch (err) {
+      console.error('[useCopy] instruct error:', (err as Error).message);
       error.value = (err as Error).message;
       return null;
     } finally {

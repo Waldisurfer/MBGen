@@ -36,6 +36,7 @@ export function useImages() {
     platform: string,
     modelId?: string
   ): Promise<string | null> {
+    console.log(`[useImages] generate campaignId=${campaignId} platform=${platform} modelId=${modelId}`);
     status.value = 'processing';
     error.value = null;
     imageUrl.value = null;
@@ -49,12 +50,14 @@ export function useImages() {
       generationId.value = response.id;
       estimatedCostUsd.value = response.estimatedCostUsd ?? null;
       store.setGeneration(response);
+      console.log(`[useImages] generate started id=${response.id} predictionId=${response.predictionId} estimatedCost=$${response.estimatedCostUsd}`);
 
       poller = setInterval(async () => {
         try {
           const statusResponse = await api.get<ImageStatusResponse>(
             `/images/status/${response.predictionId}`
           );
+          console.log(`[useImages] poll status=${statusResponse.status} imageUrl=${statusResponse.imageUrl ?? 'none'}`);
 
           if (statusResponse.status === 'completed' && statusResponse.imageUrl) {
             status.value = 'completed';
@@ -73,11 +76,13 @@ export function useImages() {
             statusResponse.status === 'failed' ||
             statusResponse.status === 'canceled'
           ) {
+            console.warn(`[useImages] generation failed: ${statusResponse.error}`);
             status.value = 'failed';
             error.value = statusResponse.error ?? 'Image generation failed';
             stopPolling();
           }
         } catch (err) {
+          console.error('[useImages] poll error:', (err as Error).message);
           status.value = 'failed';
           error.value = (err as Error).message;
           stopPolling();
@@ -86,6 +91,7 @@ export function useImages() {
 
       return response.id;
     } catch (err) {
+      console.error('[useImages] generate error:', (err as Error).message);
       status.value = 'failed';
       error.value = (err as Error).message;
       return null;
@@ -97,6 +103,7 @@ export function useImages() {
     instruction: string,
     modelId?: string
   ): Promise<string | null> {
+    console.log(`[useImages] instruct genId=${genId} instruction="${instruction}" modelId=${modelId}`);
     stopPolling();
     status.value = 'processing';
     error.value = null;
@@ -109,16 +116,19 @@ export function useImages() {
       );
       generationId.value = response.id;
       store.setGeneration(response);
+      console.log(`[useImages] instruct started id=${response.id} predictionId=${response.predictionId}`);
 
       poller = setInterval(async () => {
         const statusResponse = await api.get<ImageStatusResponse>(
           `/images/status/${response.predictionId}`
         );
+        console.log(`[useImages] instruct poll status=${statusResponse.status}`);
         if (statusResponse.status === 'completed' && statusResponse.imageUrl) {
           status.value = 'completed';
           imageUrl.value = statusResponse.imageUrl;
           stopPolling();
         } else if (statusResponse.status === 'failed') {
+          console.warn(`[useImages] instruct failed: ${statusResponse.error}`);
           status.value = 'failed';
           error.value = statusResponse.error ?? 'Failed';
           stopPolling();
@@ -127,6 +137,7 @@ export function useImages() {
 
       return response.id;
     } catch (err) {
+      console.error('[useImages] instruct error:', (err as Error).message);
       status.value = 'failed';
       error.value = (err as Error).message;
       return null;
@@ -138,6 +149,7 @@ export function useImages() {
     aspectRatio: AspectRatio = '1:1',
     modelId?: string
   ): Promise<void> {
+    console.log(`[useImages] generateDirect ar=${aspectRatio} modelId=${modelId} prompt="${prompt.slice(0, 80)}"`);
     stopPolling();
     status.value = 'processing';
     error.value = null;
@@ -148,29 +160,35 @@ export function useImages() {
         '/images/generate-prompt',
         { prompt, aspectRatio, ...(modelId ? { modelId } : {}) }
       );
+      console.log(`[useImages] generateDirect predictionId=${response.predictionId}`);
 
       poller = setInterval(async () => {
         try {
           const statusResponse = await api.get<{ status: string; imageUrl?: string; error?: string }>(
             `/images/quick-status/${response.predictionId}`
           );
+          console.log(`[useImages] generateDirect poll status=${statusResponse.status}`);
 
           if (statusResponse.status === 'completed' && statusResponse.imageUrl) {
             status.value = 'completed';
             imageUrl.value = statusResponse.imageUrl;
+            console.log(`[useImages] generateDirect completed imageUrl=${statusResponse.imageUrl}`);
             stopPolling();
           } else if (statusResponse.status === 'failed' || statusResponse.status === 'canceled') {
+            console.warn(`[useImages] generateDirect failed: ${statusResponse.error}`);
             status.value = 'failed';
             error.value = statusResponse.error ?? 'Image generation failed';
             stopPolling();
           }
         } catch (err) {
+          console.error('[useImages] generateDirect poll error:', (err as Error).message);
           status.value = 'failed';
           error.value = (err as Error).message;
           stopPolling();
         }
       }, 2000);
     } catch (err) {
+      console.error('[useImages] generateDirect error:', (err as Error).message);
       status.value = 'failed';
       error.value = (err as Error).message;
     }

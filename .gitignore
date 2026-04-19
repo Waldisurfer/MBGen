@@ -55,7 +55,7 @@ coverage/
 # Supabase local CLI temp state
 supabase/.temp/
 
-# Agent and local state
+# Claude Code / AI tooling
 .agents/
 .claude/
 skills-lock.json
