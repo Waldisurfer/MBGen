@@ -10,6 +10,7 @@ export async function listUsersHandler(_req: Request, res: Response): Promise<vo
     id: p.id,
     userId: p.userId,
     role: p.role,
+    status: p.status,
     monthlySpendUsd: parseFloat(p.monthlySpendUsd ?? '0'),
     monthlyLimitUsd: MONTHLY_LIMIT_USD,
     spendPercent: Math.round((parseFloat(p.monthlySpendUsd ?? '0') / MONTHLY_LIMIT_USD) * 100),
@@ -47,6 +48,24 @@ export async function setUserRoleHandler(req: Request, res: Response): Promise<v
     return;
   }
   res.json({ success: true, role: updated.role });
+}
+
+export async function setUserStatusHandler(req: Request, res: Response): Promise<void> {
+  const id = req.params.id as string;
+  const { status } = req.body as { status: string };
+  if (status !== 'active' && status !== 'pending' && status !== 'suspended') {
+    res.status(400).json({ error: 'Status must be active, pending, or suspended' });
+    return;
+  }
+  const [updated] = await db.update(userProfiles)
+    .set({ status })
+    .where(eq(userProfiles.id, id))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+  res.json({ success: true, status: updated.status });
 }
 
 export async function listGenerationsHandler(_req: Request, res: Response): Promise<void> {
