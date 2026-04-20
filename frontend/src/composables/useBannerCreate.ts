@@ -19,20 +19,27 @@ export function useBannerCreate() {
   const error       = ref<string | null>(null);
   const lastCostUsd = ref<number | null>(null);
   const brandInfo   = ref('');
+  const brandId     = ref<string | undefined>(undefined);
   const refinement  = ref('');
   const count       = ref(4);
   const auth        = useAuthStore();
 
   async function create(): Promise<void> {
-    if (!brandInfo.value.trim()) return;
+    if (!brandId.value && !brandInfo.value.trim()) {
+      console.warn('[bannerCreate] create() called but no brand info — aborting');
+      return;
+    }
+    console.log(`[bannerCreate] create() brandId=${brandId.value ?? 'none'} count=${count.value} refinement=${!!refinement.value.trim()}`);
     isLoading.value = true;
     error.value = null;
     try {
       const result = await api.post<CreateResponse>('/banner/create', {
         brandInfo: brandInfo.value,
+        brandId: brandId.value,
         count: count.value,
         refinement: refinement.value.trim() || undefined,
       }, 120_000); // 2 min — Claude HTML generation can take ~30-60s
+      console.log(`[bannerCreate] create() success banners=${result.banners.length} cost=$${result.costUsd}`);
       banners.value = result.banners.map(b => ({
         ...b,
         id: crypto.randomUUID(),
@@ -40,6 +47,7 @@ export function useBannerCreate() {
       lastCostUsd.value = result.costUsd;
       void auth.refreshProfile();
     } catch (err: unknown) {
+      console.error('[bannerCreate] create() error:', err instanceof Error ? err.message : String(err));
       error.value = err instanceof Error ? err.message : 'Generation failed';
     } finally {
       isLoading.value = false;
@@ -58,7 +66,7 @@ export function useBannerCreate() {
 
   return {
     banners, isLoading, error, lastCostUsd,
-    brandInfo, refinement, count,
+    brandInfo, brandId, refinement, count,
     create, remove, clear,
   };
 }

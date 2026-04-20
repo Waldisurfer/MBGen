@@ -1,14 +1,28 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import html2canvas from 'html2canvas';
 import { useBannerCreate } from '@/composables/useBannerCreate';
 import type { GeneratedBanner } from '@/composables/useBannerCreate';
+import BrandSelector from '@/components/ui/BrandSelector.vue';
+import type { Brand } from '@/types/campaign.types';
 
 const {
   banners, isLoading, error, lastCostUsd,
-  brandInfo, refinement, count,
+  brandInfo, brandId, refinement, count,
   create, remove,
 } = useBannerCreate();
+
+const selectedBrand = ref<Brand | null>(null);
+
+// Sync selected brand → composable
+watch(selectedBrand, (brand) => {
+  if (brand) {
+    brandId.value = brand.id;
+    brandInfo.value = '';
+  } else {
+    brandId.value = undefined;
+  }
+});
 
 const bannerRefs = ref<Record<string, HTMLElement>>({});
 const downloading = ref<string | null>(null);
@@ -77,18 +91,25 @@ onMounted(() => {
           <p class="text-xs text-gray-400 mt-0.5">Claude generates the HTML and CSS</p>
         </div>
 
-        <!-- Brand info -->
+        <!-- Brand selector -->
         <section class="space-y-1.5">
-          <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Brand / offer</label>
+          <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Brand</label>
+          <BrandSelector v-model="selectedBrand" />
+          <p v-if="selectedBrand" class="text-xs text-gray-400 truncate">{{ selectedBrand.description }}</p>
+        </section>
+
+        <!-- Manual brand info (shown when no brand selected) -->
+        <section v-if="!selectedBrand" class="space-y-1.5">
+          <label class="text-xs font-medium text-gray-500 uppercase tracking-wide">Or describe brand / offer</label>
           <textarea
             v-model="brandInfo"
-            rows="7"
-            placeholder="Describe your brand, product, or offer. The more detail, the better the output.
+            rows="5"
+            placeholder="Describe your brand, product, or offer.
 
 Example:
 Zen Coffee – specialty coffee subscription
 Single-origin beans, roasted weekly
-Start from $19/month, cancel anytime"
+Start from $19/month"
             class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
           />
         </section>
@@ -127,7 +148,7 @@ Start from $19/month, cancel anytime"
       <!-- Generate button -->
       <div class="border-t border-gray-200 px-5 py-4">
         <button
-          :disabled="isLoading || !brandInfo.trim()"
+          :disabled="isLoading || (!selectedBrand && !brandInfo.trim())"
           class="w-full py-2.5 text-sm font-semibold bg-brand-600 text-white rounded-xl hover:bg-brand-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           @click="generate"
         >

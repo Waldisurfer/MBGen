@@ -3,18 +3,33 @@ import { ref, computed } from 'vue';
 import Button from '@/components/ui/Button.vue';
 import Skeleton from '@/components/ui/Skeleton.vue';
 import ModelSelector from '@/components/ui/ModelSelector.vue';
+import BrandSelector from '@/components/ui/BrandSelector.vue';
 import { useImages } from '@/composables/useImages';
 import { useImageModels } from '@/composables/useModelList';
+import type { Brand } from '@/types/campaign.types';
 
 type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
 
 const prompt = ref('');
 const aspectRatio = ref<AspectRatio>('1:1');
 const selectedModel = ref('flux-1.1-pro');
+const selectedBrand = ref<Brand | null>(null);
 const { status, imageUrl, error, generateDirect } = useImages();
 const models = useImageModels();
 
 const activeModel = computed(() => models.value.find((m) => m.id === selectedModel.value));
+
+function buildPrompt(): string {
+  if (!selectedBrand.value) return prompt.value.trim();
+  const brand = selectedBrand.value;
+  const brandContext = [
+    `Brand: ${brand.name}`,
+    brand.description,
+    brand.tone ? `Tone: ${brand.tone}` : '',
+    brand.colors.length ? `Brand colors: ${brand.colors.join(', ')}` : '',
+  ].filter(Boolean).join('. ');
+  return `${prompt.value.trim()}. ${brandContext}`.trim();
+}
 
 const aspectRatios: { value: AspectRatio; label: string }[] = [
   { value: '1:1', label: '1:1' },
@@ -26,7 +41,7 @@ const aspectRatios: { value: AspectRatio; label: string }[] = [
 
 async function handleGenerate() {
   if (!prompt.value.trim()) return;
-  await generateDirect(prompt.value.trim(), aspectRatio.value, selectedModel.value);
+  await generateDirect(buildPrompt(), aspectRatio.value, selectedModel.value);
 }
 
 function handleDownload() {
@@ -44,6 +59,13 @@ function handleDownload() {
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-gray-900">Image Studio</h1>
       <p class="text-sm text-gray-500 mt-0.5">Generate marketing images from a text prompt.</p>
+    </div>
+
+    <!-- Brand selector -->
+    <div class="mb-4">
+      <label class="text-xs font-medium text-gray-500 uppercase tracking-wide block mb-1.5">Brand (optional)</label>
+      <BrandSelector v-model="selectedBrand" />
+      <p class="text-xs text-gray-400 mt-1">When selected, brand context is appended to your prompt automatically.</p>
     </div>
 
     <!-- Prompt input -->
