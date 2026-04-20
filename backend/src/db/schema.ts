@@ -3,6 +3,37 @@ import { pgTable, uuid, text, jsonb, timestamp, pgEnum, numeric, index } from 'd
 export const generationTypeEnum = pgEnum('generation_type', ['copy', 'image', 'animation', 'video']);
 export const generationStatusEnum = pgEnum('generation_status', ['pending', 'processing', 'completed', 'failed']);
 
+export const brands = pgTable('brands', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull(),
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  tone: text('tone').notNull(),
+  colors: text('colors').array().notNull(),
+  fonts: text('fonts').array().notNull(),
+  logoKey: text('logo_key'),
+  lastUsedAt: timestamp('last_used_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [
+  index('brands_user_id_idx').on(t.userId),
+]);
+
+export const audiences = pgTable('audiences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull(),
+  name: text('name').notNull(),
+  demographics: text('demographics').notNull(),
+  psychographics: text('psychographics').notNull(),
+  painPoints: text('pain_points').notNull(),
+  channels: text('channels').array().notNull(),
+  lastUsedAt: timestamp('last_used_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => [
+  index('audiences_user_id_idx').on(t.userId),
+]);
+
 export const campaigns = pgTable('campaigns', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull(),
@@ -11,6 +42,8 @@ export const campaigns = pgTable('campaigns', {
   audience: jsonb('audience').notNull(),
   brand: jsonb('brand').notNull(),
   brief: jsonb('brief'),
+  brandId: uuid('brand_id').references(() => brands.id, { onDelete: 'set null' }),
+  audienceId: uuid('audience_id').references(() => audiences.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
   index('campaigns_user_id_idx').on(t.userId),

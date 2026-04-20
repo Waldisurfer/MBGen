@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { and, eq, desc } from 'drizzle-orm';
 import { db } from '../db/client';
-import { campaigns } from '../db/schema';
+import { campaigns, brands, audiences } from '../db/schema';
 import { parseCampaignBrief, parseStrategyDocument } from '../services/claude.service';
 import { uploadBuffer, getPresignedUploadUrl, generateKey } from '../services/storage.service';
 import type { CampaignFormData } from '../types/api.types';
@@ -25,10 +25,13 @@ const BrandSchema = z.object({
 const CampaignSchema = z.object({
   name: z.string().min(1),
   strategy: z.string().min(10),
-  audience: AudienceSchema,
-  brand: BrandSchema,
+  audience: AudienceSchema.optional(),
+  audienceId: z.string().uuid().optional(),
+  brand: BrandSchema.optional(),
+  brandId: z.string().uuid().optional(),
   inspirationKeys: z.array(z.string()),
-});
+}).refine(d => d.audience || d.audienceId, { message: 'audience or audienceId is required' })
+  .refine(d => d.brand || d.brandId, { message: 'brand or brandId is required' });
 
 export async function listCampaigns(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
@@ -65,23 +68,82 @@ export async function getCampaign(req: Request, res: Response): Promise<void> {
 }
 
 export async function createCampaign(req: Request, res: Response): Promise<void> {
-  const body = CampaignSchema.parse(req.body) as CampaignFormData;
-  console.log(`[campaigns] createCampaign name="${body.name}" userId=${req.user!.userId}`);
+  const body = CampaignSchema.parse(req.body);
+  const userId = req.user!.userId;
+  console.log(`[campaigns] createCampaign name="${body.name}" userId=${userId}`);
+
+  // Resolve audience — from library or inline
+  let audienceData: { demographics: string; psychographics: string; painPoints: string; channels: string[] };
+  let resolvedAudienceId: string | undefined;
+
+  if (body.audienceId) {
+    const [saved] = await db
+      .select()
+      .from(audiences)
+      .where(and(eq(audiences.id, body.audienceId), eq(audiences.userId, userId)))
+      .limit(1);
+    if (!saved) { res.status(400).json({ error: 'Audience not found' }); return; }
+    audienceData = {
+      demographics: saved.demographics,
+      psychographics: saved.psychographics,
+      painPoints: saved.painPoints,
+      channels: saved.channels,
+    };
+    resolvedAudienceId = saved.id;
+    await db.update(audiences).set({ lastUsedAt: new Date() }).where(eq(audiences.id, saved.id));
+  } else {
+    audienceData = body.audience!;
+  }
+
+  // Resolve brand — from library or inline
+  let brandData: { name: string; tone: string; colors: string[]; fonts: string[]; logoKey?: string };
+  let resolvedBrandId: string | undefined;
+
+  if (body.brandId) {
+    const [saved] = await db
+      .select()
+      .from(brands)
+      .where(and(eq(brands.id, body.brandId), eq(brands.userId, userId)))
+      .limit(1);
+    if (!saved) { res.status(400).json({ error: 'Brand not found' }); return; }
+    brandData = {
+      name: saved.name,
+      tone: saved.tone,
+      colors: saved.colors,
+      fonts: saved.fonts,
+      ...(saved.logoKey ? { logoKey: saved.logoKey } : {}),
+    };
+    resolvedBrandId = saved.id;
+    await db.update(brands).set({ lastUsedAt: new Date() }).where(eq(brands.id, saved.id));
+  } else {
+    brandData = body.brand!;
+  }
+
+  // Build form data for brief parsing
+  const formData: CampaignFormData = {
+    name: body.name,
+    strategy: body.strategy,
+    audience: audienceData,
+    brand: brandData,
+    inspirationKeys: body.inspirationKeys,
+  };
 
   // Parse structured brief via Claude (synchronous, ~3-5s)
   console.log('[campaigns] Parsing brief via Claude...');
-  const brief = await parseCampaignBrief(body);
+  const brief = await parseCampaignBrief(formData);
   console.log('[campaigns] Brief parsed:', JSON.stringify(brief).slice(0, 200));
 
   const [campaign] = await db
     .insert(campaigns)
     .values({
-      userId: req.user!.userId,
+      userId,
       name: body.name,
       strategy: body.strategy,
-      audience: body.audience,
-      brand: body.brand,
+      audience: audienceData,
+      brand: brandData,
       brief,
+      ...(resolvedBrandId ? { brandId: resolvedBrandId } : {}),
+      ...(resolvedAudienceId ? { audienceId: resolvedAudienceId } : {}),
     })
     .returning();
 
