@@ -6,6 +6,7 @@ interface UserRow {
   id: string;
   userId: string;
   role: string;
+  status: string;
   monthlySpendUsd: number;
   monthlyLimitUsd: number;
   spendPercent: number;
@@ -16,6 +17,7 @@ interface UserRow {
 const users    = ref<UserRow[]>([]);
 const loading  = ref(true);
 const resetting = ref<string | null>(null);
+const updatingStatus = ref<string | null>(null);
 
 const totalSpend = computed(() =>
   users.value.reduce((sum, u) => sum + u.monthlySpendUsd, 0)
@@ -41,6 +43,13 @@ async function toggleRole(user: UserRow) {
   const newRole = user.role === 'admin' ? 'user' : 'admin';
   await api.post(`/admin/users/${user.id}/role`, { role: newRole });
   await load();
+}
+
+async function setStatus(user: UserRow, status: string) {
+  updatingStatus.value = user.id;
+  await api.post(`/admin/users/${user.id}/status`, { status });
+  await load();
+  updatingStatus.value = null;
 }
 
 onMounted(load);
@@ -81,6 +90,7 @@ onMounted(load);
         <thead>
           <tr class="border-b border-gray-100">
             <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">User ID</th>
+            <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
             <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Role</th>
             <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Monthly spend</th>
             <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Usage</th>
@@ -91,6 +101,11 @@ onMounted(load);
           <tr v-for="u in users" :key="u.id" class="border-b border-gray-50 last:border-0">
             <td class="px-5 py-3">
               <span class="font-mono text-xs text-gray-500">{{ u.userId.slice(0, 8) }}…</span>
+            </td>
+            <td class="px-5 py-3">
+              <span :class="['inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium', u.status === 'active' ? 'bg-green-50 text-green-700' : u.status === 'suspended' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700']">
+                {{ u.status }}
+              </span>
             </td>
             <td class="px-5 py-3">
               <span :class="['inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium', u.role === 'admin' ? 'bg-brand-50 text-brand-700' : 'bg-gray-100 text-gray-600']">
@@ -115,6 +130,22 @@ onMounted(load);
             </td>
             <td class="px-5 py-3">
               <div class="flex items-center gap-2 justify-end">
+                <button
+                  v-if="u.status !== 'active'"
+                  class="text-xs text-green-600 hover:text-green-800 font-medium transition-colors"
+                  :disabled="updatingStatus === u.id"
+                  @click="setStatus(u, 'active')"
+                >
+                  {{ updatingStatus === u.id ? '…' : 'Approve' }}
+                </button>
+                <button
+                  v-if="u.status === 'active'"
+                  class="text-xs text-red-500 hover:text-red-700 transition-colors"
+                  :disabled="updatingStatus === u.id"
+                  @click="setStatus(u, 'suspended')"
+                >
+                  {{ updatingStatus === u.id ? '…' : 'Suspend' }}
+                </button>
                 <button
                   v-if="u.role !== 'admin'"
                   class="text-xs text-gray-500 hover:text-brand-600 transition-colors"
