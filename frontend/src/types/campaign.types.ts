@@ -16,9 +16,55 @@ export interface BrandData {
 export interface CampaignFormData {
   name: string;
   strategy: string;
-  audience: AudienceData;
-  brand: BrandData;
+  audience?: AudienceData;
+  audienceId?: string;
+  brand?: BrandData;
+  brandId?: string;
   inspirationKeys: string[];
+}
+
+export interface Brand {
+  id: string;
+  userId: string;
+  name: string;
+  description: string;
+  tone: string;
+  colors: string[];
+  fonts: string[];
+  logoKey?: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BrandFormData {
+  name: string;
+  description: string;
+  tone: string;
+  colors: string[];
+  fonts: string[];
+  logoKey?: string;
+}
+
+export interface Audience {
+  id: string;
+  userId: string;
+  name: string;
+  demographics: string;
+  psychographics: string;
+  painPoints: string;
+  channels: string[];
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AudienceFormData {
+  name: string;
+  demographics: string;
+  psychographics: string;
+  painPoints: string;
+  channels: string[];
 }
 
 export interface StructuredBrief {
