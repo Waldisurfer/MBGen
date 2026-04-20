@@ -82,8 +82,9 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
         .map((e) => e.trim().toLowerCase())
         .filter(Boolean);
       const role = adminEmails.includes(email.toLowerCase()) ? 'admin' : 'user';
-      console.log(`[auth] Assigning role: ${role}`);
-      [profile] = await db.insert(userProfiles).values({ userId, role }).returning();
+      const status = role === 'admin' ? 'active' : 'pending';
+      console.log(`[auth] Assigning role: ${role}, status: ${status}`);
+      [profile] = await db.insert(userProfiles).values({ userId, role, status }).returning();
     }
 
     // Reset monthly spend if calendar month has changed
@@ -95,6 +96,12 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
         .set({ monthlySpendUsd: '0', monthlyResetAt: now })
         .where(eq(userProfiles.userId, userId))
         .returning();
+    }
+
+    if (profile.status !== 'active') {
+      console.warn(`[auth] Account not active for ${userId} (status=${profile.status})`);
+      res.status(403).json({ error: 'account_pending', message: 'Your account is awaiting approval.' });
+      return;
     }
 
     req.user = {

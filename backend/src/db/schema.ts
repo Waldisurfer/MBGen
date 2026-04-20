@@ -43,6 +43,9 @@ export const userProfiles = pgTable('user_profiles', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: text('user_id').notNull().unique(),
   role: text('role').notNull().default('user'),
+  // 'active' = approved, 'pending' = awaiting approval, 'suspended' = blocked
+  // DB default is 'active' so existing rows stay active; new users are set explicitly in middleware
+  status: text('status').notNull().default('active'),
   monthlySpendUsd: numeric('monthly_spend_usd', { precision: 10, scale: 6 }).notNull().default('0'),
   monthlyResetAt: timestamp('monthly_reset_at').defaultNow().notNull(),
   styleGuidelines: jsonb('style_guidelines'),
