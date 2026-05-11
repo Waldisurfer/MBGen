@@ -86,7 +86,7 @@ export async function instructAnimationHandler(req: Request, res: Response): Pro
   const [campaign] = await db
     .select()
     .from(campaigns)
-    .where(and(eq(campaigns.id, existing.campaignId), eq(campaigns.userId, userId)))
+    .where(eq(campaigns.id, existing.campaignId))
     .limit(1);
   const cost = CLAUDE_COSTS.animationGenerate + CLAUDE_COSTS.rewritePrompt;
   console.log(`[animations] instructAnimation cost=$${cost}`);

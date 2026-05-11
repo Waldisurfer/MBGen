@@ -107,6 +107,7 @@ export async function getProfileHandler(req: Request, res: Response): Promise<vo
   const profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });
   res.json({
     userId,
+    email: profile?.email ?? null,
     role: req.user!.role,
     monthlySpendUsd: req.user!.monthlySpendUsd,
     monthlyLimitUsd: 0.10,

@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { and, eq, desc, sql } from 'drizzle-orm';
+import { and, eq, or, desc, sql } from 'drizzle-orm';
 import { db } from '../db/client';
-import { audiences } from '../db/schema';
+import { audiences, userProfiles } from '../db/schema';
 
 const AudienceSchema = z.object({
   name: z.string().min(1),
@@ -10,24 +10,26 @@ const AudienceSchema = z.object({
   psychographics: z.string().min(1),
   painPoints: z.string().min(1),
   channels: z.array(z.string()).min(1),
+  private: z.boolean().optional().default(false),
 });
 
 export async function listAudiences(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const result = await db
-    .select()
+  const rows = await db
+    .select({ audience: audiences, creatorEmail: userProfiles.email })
     .from(audiences)
-    .where(eq(audiences.userId, userId))
-    .orderBy(sql`last_used_at DESC NULLS LAST`, desc(audiences.createdAt));
-  res.json(result);
+    .leftJoin(userProfiles, eq(userProfiles.userId, audiences.userId))
+    .where(or(eq(audiences.private, false), eq(audiences.userId, userId)))
+    .orderBy(sql`${audiences.lastUsedAt} DESC NULLS LAST`, desc(audiences.createdAt));
+  res.json(rows.map(r => ({ ...r.audience, creatorEmail: r.creatorEmail ?? null })));
 }
 
 export async function createAudience(req: Request, res: Response): Promise<void> {
-  const body = AudienceSchema.parse(req.body);
+  const { private: isPrivate, ...rest } = AudienceSchema.parse(req.body);
   const userId = req.user!.userId;
   const [audience] = await db
     .insert(audiences)
-    .values({ ...body, userId })
+    .values({ ...rest, userId, private: isPrivate })
     .returning();
   res.status(201).json(audience);
 }
@@ -35,10 +37,10 @@ export async function createAudience(req: Request, res: Response): Promise<void>
 export async function updateAudience(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   const userId = req.user!.userId;
-  const body = AudienceSchema.parse(req.body);
+  const { private: isPrivate, ...rest } = AudienceSchema.parse(req.body);
   const [audience] = await db
     .update(audiences)
-    .set({ ...body, updatedAt: new Date() })
+    .set({ ...rest, private: isPrivate, updatedAt: new Date() })
     .where(and(eq(audiences.id, id as string), eq(audiences.userId, userId)))
     .returning();
   if (!audience) {
@@ -64,10 +66,9 @@ export async function deleteAudience(req: Request, res: Response): Promise<void>
 
 export async function markAudienceUsed(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
-  const userId = req.user!.userId;
   await db
     .update(audiences)
     .set({ lastUsedAt: new Date() })
-    .where(and(eq(audiences.id, id as string), eq(audiences.userId, userId)));
+    .where(eq(audiences.id, id as string));
   res.status(204).send();
 }

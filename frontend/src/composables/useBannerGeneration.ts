@@ -66,7 +66,7 @@ export function useBannerGeneration() {
       if (mode !== 'fresh' && sourceVariation) {
         body.sourceVariation = toApiVariation(sourceVariation);
       }
-      const result = await api.post<GenerateResponse>('/banner/generate', body);
+      const result = await api.post<GenerateResponse>('/banner/generate', body, 120_000);
       variations.value  = result.variations.map(toClientVariation);
       lastCostUsd.value = result.costUsd;
       void auth.refreshProfile();
@@ -88,10 +88,10 @@ export function useBannerGeneration() {
     try {
       const result = await api.post<GenerateResponse>('/banner/generate', {
         brandInfo: brandInfo.value,
-        count: 1,
+        count: 2,
         mode,
         sourceVariation: toApiVariation(source),
-      });
+      }, 120_000);
       const newVariation = toClientVariation(result.variations[0]);
       variations.value = variations.value.map((v, i) => i === index ? newVariation : v);
       lastCostUsd.value = (lastCostUsd.value ?? 0) + result.costUsd;

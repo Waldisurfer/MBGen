@@ -315,19 +315,33 @@ export interface GeneratedBannerHtml {
   desc: string;
 }
 
+export interface TopRatedBannerContext {
+  desc: string;
+  promptUsed: string;
+  rating?: number;
+  ctr?: number;
+}
+
 export async function generateBannerHtml(
   brandInfo: string,
   count: number,
   refinement?: string,
   styleContext?: string,
+  topRatedContext?: TopRatedBannerContext[],
 ): Promise<GeneratedBannerHtml[]> {
-  console.log(`[claude] generateBannerHtml count=${count} hasRefinement=${!!refinement} hasStyle=${!!styleContext}`);
+  console.log(`[claude] generateBannerHtml count=${count} hasRefinement=${!!refinement} hasStyle=${!!styleContext} topRated=${topRatedContext?.length ?? 0}`);
 
   const refinementClause = refinement
     ? `\n\nUser refinement request: "${refinement}"\nApply this change across all banners.`
     : '';
   const styleClause = styleContext
     ? `\n\nBrand style guidelines:\n${styleContext}`
+    : '';
+  const topRatedClause = topRatedContext?.length
+    ? `\n\nTop-performing banners from previous rounds (learn from what worked, build on these styles):\n` +
+      topRatedContext.map(b =>
+        `- Style: "${b.desc}"${b.rating ? ` | Rating: ${b.rating}/5` : ''}${b.ctr != null ? ` | CTR: ${b.ctr.toFixed(2)}%` : ''}\n  Prompt: "${b.promptUsed.slice(0, 200)}"`
+      ).join('\n')
     : '';
 
   const response = await getClient().messages.create(
@@ -336,7 +350,7 @@ export async function generateBannerHtml(
       max_tokens: 8192, // each banner is ~3-4k tokens; use the full budget
       messages: [{
         role: 'user',
-        content: `You are a creative ad designer. Generate exactly ${count} banner ad variation(s) as HTML.${styleClause}${refinementClause}
+        content: `You are a creative ad designer. Generate exactly ${count} banner ad variation(s) as HTML.${styleClause}${topRatedClause}${refinementClause}
 
 Brand:
 ${brandInfo}

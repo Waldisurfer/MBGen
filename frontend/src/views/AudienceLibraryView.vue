@@ -2,10 +2,12 @@
 import { ref, reactive, onMounted } from 'vue';
 import { useAudienceStore } from '@/stores/audience.store';
 import { useUiStore } from '@/stores/ui.store';
+import { useAuthStore } from '@/stores/auth.store';
 import type { Audience, AudienceFormData } from '@/types/campaign.types';
 
 const audienceStore = useAudienceStore();
 const ui = useUiStore();
+const auth = useAuthStore();
 
 const CHANNELS = ['instagram', 'facebook', 'tiktok', 'youtube', 'twitter', 'linkedin'] as const;
 
@@ -16,10 +18,14 @@ const editingId = ref<string | null>(null);
 const isSaving = ref(false);
 
 function emptyForm(): AudienceFormData {
-  return { name: '', demographics: '', psychographics: '', painPoints: '', channels: [] };
+  return { name: '', demographics: '', psychographics: '', painPoints: '', channels: [], private: false };
 }
 
 const form = reactive<AudienceFormData>(emptyForm());
+
+function isOwner(audience: Audience): boolean {
+  return audience.userId === auth.profile?.userId;
+}
 
 function openCreate() {
   editingId.value = null;
@@ -35,6 +41,7 @@ function openEdit(audience: Audience) {
     psychographics: audience.psychographics,
     painPoints: audience.painPoints,
     channels: [...audience.channels],
+    private: audience.private,
   });
   showForm.value = true;
 }
@@ -160,7 +167,24 @@ async function remove(audience: Audience) {
         </div>
       </div>
 
-      <div class="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+      <!-- Privacy toggle -->
+      <div class="flex items-center justify-between py-2 border-t border-gray-100">
+        <div>
+          <p class="text-sm font-medium text-gray-700">Private</p>
+          <p class="text-xs text-gray-400">Only you can see this audience</p>
+        </div>
+        <button
+          type="button"
+          :class="['relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+            form.private ? 'bg-brand-600' : 'bg-gray-200']"
+          @click="form.private = !form.private"
+        >
+          <span :class="['pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform',
+            form.private ? 'translate-x-5' : 'translate-x-0']" />
+        </button>
+      </div>
+
+      <div class="flex items-center justify-end gap-3 border-t border-gray-100 pt-2">
         <button type="button" class="text-sm text-gray-500 hover:text-gray-700" @click="cancel">Cancel</button>
         <button
           type="button"
@@ -196,7 +220,12 @@ async function remove(audience: Audience) {
         class="rounded-2xl border border-gray-200 bg-white px-5 py-4 flex items-start gap-4"
       >
         <div class="flex-1 min-w-0">
-          <p class="font-semibold text-gray-900 text-sm">{{ audience.name }}</p>
+          <div class="flex items-center gap-1.5">
+            <p class="font-semibold text-gray-900 text-sm">{{ audience.name }}</p>
+            <svg v-if="audience.private" class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Private">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+          </div>
           <p class="text-xs text-gray-500 mt-1 line-clamp-2">{{ audience.demographics }}</p>
           <div class="flex gap-1 mt-2">
             <span
@@ -205,9 +234,10 @@ async function remove(audience: Audience) {
               class="px-2 py-0.5 text-[10px] bg-gray-100 text-gray-500 rounded-full capitalize"
             >{{ ch }}</span>
           </div>
+          <p v-if="!isOwner(audience) && audience.creatorEmail" class="text-[10px] text-gray-400 mt-1.5">by {{ audience.creatorEmail }}</p>
         </div>
 
-        <div class="flex items-center gap-2 shrink-0 mt-0.5">
+        <div v-if="isOwner(audience)" class="flex items-center gap-2 shrink-0 mt-0.5">
           <button
             class="text-xs text-gray-400 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             @click="openEdit(audience)"
@@ -216,6 +246,9 @@ async function remove(audience: Audience) {
             class="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors"
             @click="remove(audience)"
           >Delete</button>
+        </div>
+        <div v-else class="shrink-0 mt-0.5">
+          <span class="text-[10px] text-gray-300">shared</span>
         </div>
       </div>
     </div>
