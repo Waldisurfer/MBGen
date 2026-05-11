@@ -32,6 +32,8 @@ export interface Brand {
   colors: string[];
   fonts: string[];
   logoKey?: string;
+  private: boolean;
+  creatorEmail: string | null;
   lastUsedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -44,6 +46,7 @@ export interface BrandFormData {
   colors: string[];
   fonts: string[];
   logoKey?: string;
+  private?: boolean;
 }
 
 export interface Audience {
@@ -54,6 +57,8 @@ export interface Audience {
   psychographics: string;
   painPoints: string;
   channels: string[];
+  private: boolean;
+  creatorEmail: string | null;
   lastUsedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -65,6 +70,7 @@ export interface AudienceFormData {
   psychographics: string;
   painPoints: string;
   channels: string[];
+  private?: boolean;
 }
 
 export interface StructuredBrief {
@@ -91,10 +97,12 @@ export interface ParsedCampaignSuggestion {
 
 export interface Campaign {
   id: string;
+  userId: string;
   name: string;
   strategy: string;
   audience: AudienceData;
   brand: BrandData;
   brief: StructuredBrief | null;
+  private: boolean;
   createdAt: string;
 }

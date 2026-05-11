@@ -9,6 +9,7 @@ export async function listUsersHandler(_req: Request, res: Response): Promise<vo
   res.json(profiles.map(p => ({
     id: p.id,
     userId: p.userId,
+    email: p.email ?? null,
     role: p.role,
     status: p.status,
     monthlySpendUsd: parseFloat(p.monthlySpendUsd ?? '0'),

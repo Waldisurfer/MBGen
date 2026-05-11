@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 interface UserRow {
   id: string;
   userId: string;
+  email: string | null;
   role: string;
   status: string;
   monthlySpendUsd: number;
@@ -89,7 +90,7 @@ onMounted(load);
       <table v-else class="w-full text-sm">
         <thead>
           <tr class="border-b border-gray-100">
-            <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">User ID</th>
+            <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">User</th>
             <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
             <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Role</th>
             <th class="text-left px-5 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">Monthly spend</th>
@@ -100,7 +101,8 @@ onMounted(load);
         <tbody>
           <tr v-for="u in users" :key="u.id" class="border-b border-gray-50 last:border-0">
             <td class="px-5 py-3">
-              <span class="font-mono text-xs text-gray-500">{{ u.userId.slice(0, 8) }}…</span>
+              <span v-if="u.email" class="text-sm text-gray-800">{{ u.email }}</span>
+              <span v-else class="font-mono text-xs text-gray-400">{{ u.userId.slice(0, 8) }}…</span>
             </td>
             <td class="px-5 py-3">
               <span :class="['inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium', u.status === 'active' ? 'bg-green-50 text-green-700' : u.status === 'suspended' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700']">
