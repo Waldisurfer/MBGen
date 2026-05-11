@@ -1,23 +1,24 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
   generateBannerSuggestions,
   generateBannerVariationsFromClaude,
   generateBannerHtml,
+  type TopRatedBannerContext,
 } from '../services/claude.service';
 import { checkSpendLimit, recordSpend } from '../utils/spend';
 import { CLAUDE_COSTS } from '../config/models';
 import { getUserStyleContext } from './styles.controller';
 import { db } from '../db/client';
-import { brands } from '../db/schema';
+import { brands, banners } from '../db/schema';
 
-async function resolveBrandInfo(userId: string, brandId: string | undefined, inlineBrandInfo: string): Promise<string> {
+async function resolveBrandInfo(_userId: string, brandId: string | undefined, inlineBrandInfo: string): Promise<string> {
   if (!brandId) return inlineBrandInfo;
   const [brand] = await db
     .select()
     .from(brands)
-    .where(and(eq(brands.id, brandId), eq(brands.userId, userId)))
+    .where(eq(brands.id, brandId))
     .limit(1);
   if (!brand) return inlineBrandInfo;
   await db.update(brands).set({ lastUsedAt: new Date() }).where(eq(brands.id, brandId));
@@ -82,27 +83,51 @@ export async function suggestBannerContent(req: Request, res: Response): Promise
   res.json({ ...suggestions, costUsd: cost });
 }
 
+const TopRatedContextSchema = z.object({
+  desc:       z.string().max(500),
+  promptUsed: z.string().max(2000),
+  rating:     z.number().int().min(1).max(5).optional(),
+  ctr:        z.number().min(0).max(100).optional(),
+});
+
 const CreateSchema = z.object({
-  brandInfo:  z.string().max(2000).default(''),
-  brandId:    z.string().uuid().optional(),
-  count:      z.number().int().min(1).max(6),
-  refinement: z.string().max(500).optional(),
+  brandInfo:       z.string().max(2000).default(''),
+  brandId:         z.string().uuid().optional(),
+  count:           z.number().int().min(1).max(6),
+  refinement:      z.string().max(500).optional(),
+  parentBannerId:  z.string().uuid().optional(),
+  topRatedContext: z.array(TopRatedContextSchema).max(5).optional(),
 }).refine(d => d.brandId || d.brandInfo.trim().length >= 10, {
   message: 'brandInfo must be at least 10 characters when no brandId is provided',
 });
 
 export async function createBanners(req: Request, res: Response): Promise<void> {
-  const { brandInfo: inlineBrandInfo, brandId, count, refinement } = CreateSchema.parse(req.body);
+  const { brandInfo: inlineBrandInfo, brandId, count, refinement, parentBannerId, topRatedContext } = CreateSchema.parse(req.body);
   const userId = req.user!.userId;
   const brandInfo = await resolveBrandInfo(userId, brandId, inlineBrandInfo);
   const cost = CLAUDE_COSTS.bannerGenerate;
-  console.log(`[banner] createBanners userId=${userId} count=${count} hasRefinement=${!!refinement}`);
+  console.log(`[banner] createBanners userId=${userId} count=${count} hasRefinement=${!!refinement} parentBannerId=${parentBannerId ?? 'none'}`);
   await checkSpendLimit(userId, req.user!.role, cost);
   const styleContext = await getUserStyleContext(userId);
-  const banners = await generateBannerHtml(brandInfo, count, refinement, styleContext);
-  console.log(`[banner] Created ${banners.length} HTML banners`);
+  const promptUsed = [
+    brandInfo,
+    refinement ? `Refinement: ${refinement}` : '',
+    parentBannerId ? `Based on banner: ${parentBannerId}` : '',
+  ].filter(Boolean).join(' | ');
+  const generated = await generateBannerHtml(brandInfo, count, refinement, styleContext, topRatedContext);
+  console.log(`[banner] Created ${generated.length} HTML banners`);
+  const saved = await db
+    .insert(banners)
+    .values(generated.map(b => ({
+      userId,
+      html: b.html,
+      desc: b.desc,
+      promptUsed,
+      ...(parentBannerId ? { parentBannerId } : {}),
+    })))
+    .returning();
   await recordSpend(userId, cost);
-  res.json({ banners, costUsd: cost });
+  res.json({ banners: saved, costUsd: cost });
 }
 
 export async function generateBannerVariations(req: Request, res: Response): Promise<void> {

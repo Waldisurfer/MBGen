@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, or, desc } from 'drizzle-orm';
 import { db } from '../db/client';
 import { campaigns, brands, audiences } from '../db/schema';
 import { parseCampaignBrief, parseStrategyDocument } from '../services/claude.service';
@@ -30,6 +30,7 @@ const CampaignSchema = z.object({
   brand: BrandSchema.optional(),
   brandId: z.string().uuid().optional(),
   inspirationKeys: z.array(z.string()),
+  private: z.boolean().optional().default(false),
 }).refine(d => d.audience || d.audienceId, { message: 'audience or audienceId is required' })
   .refine(d => d.brand || d.brandId, { message: 'brand or brandId is required' });
 
@@ -39,7 +40,7 @@ export async function listCampaigns(req: Request, res: Response): Promise<void> 
   const result = await db
     .select()
     .from(campaigns)
-    .where(eq(campaigns.userId, userId))
+    .where(or(eq(campaigns.private, false), eq(campaigns.userId, userId)))
     .orderBy(desc(campaigns.createdAt));
   console.log(`[campaigns] Found ${result.length} campaigns`);
   res.json(result);
@@ -54,12 +55,12 @@ export async function getCampaign(req: Request, res: Response): Promise<void> {
     .from(campaigns)
     .where(and(
       eq(campaigns.id, id as string),
-      eq(campaigns.userId, userId),
+      or(eq(campaigns.private, false), eq(campaigns.userId, userId)),
     ))
     .limit(1);
 
   if (!campaign[0]) {
-    console.warn(`[campaigns] Campaign ${id} not found for user ${userId}`);
+    console.warn(`[campaigns] Campaign ${id} not found or private for user ${userId}`);
     res.status(404).json({ error: 'Campaign not found' });
     return;
   }
@@ -69,6 +70,7 @@ export async function getCampaign(req: Request, res: Response): Promise<void> {
 
 export async function createCampaign(req: Request, res: Response): Promise<void> {
   const body = CampaignSchema.parse(req.body);
+  const isPrivate = body.private ?? false;
   const userId = req.user!.userId;
   console.log(`[campaigns] createCampaign name="${body.name}" userId=${userId}`);
 
@@ -80,7 +82,7 @@ export async function createCampaign(req: Request, res: Response): Promise<void>
     const [saved] = await db
       .select()
       .from(audiences)
-      .where(and(eq(audiences.id, body.audienceId), eq(audiences.userId, userId)))
+      .where(eq(audiences.id, body.audienceId))
       .limit(1);
     if (!saved) { res.status(400).json({ error: 'Audience not found' }); return; }
     audienceData = {
@@ -103,7 +105,7 @@ export async function createCampaign(req: Request, res: Response): Promise<void>
     const [saved] = await db
       .select()
       .from(brands)
-      .where(and(eq(brands.id, body.brandId), eq(brands.userId, userId)))
+      .where(eq(brands.id, body.brandId))
       .limit(1);
     if (!saved) { res.status(400).json({ error: 'Brand not found' }); return; }
     brandData = {
@@ -142,6 +144,7 @@ export async function createCampaign(req: Request, res: Response): Promise<void>
       audience: audienceData,
       brand: brandData,
       brief,
+      private: isPrivate,
       ...(resolvedBrandId ? { brandId: resolvedBrandId } : {}),
       ...(resolvedAudienceId ? { audienceId: resolvedAudienceId } : {}),
     })

@@ -88,6 +88,7 @@ export const api = {
   post: <T>(url: string, data?: unknown, timeoutMs?: number) =>
     client.post<T, T>(url, data, timeoutMs ? { timeout: timeoutMs } : undefined),
   put: <T>(url: string, data?: unknown) => client.put<T, T>(url, data),
+  patch: <T>(url: string, data?: unknown) => client.patch<T, T>(url, data),
   delete: <T>(url: string) => client.delete<T, T>(url),
   postForm: <T>(url: string, data: FormData) =>
     client.post<T, T>(url, data, { headers: { 'Content-Type': 'multipart/form-data' } }),

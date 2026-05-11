@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { and, eq, desc, sql } from 'drizzle-orm';
+import { and, eq, or, desc, sql } from 'drizzle-orm';
 import { db } from '../db/client';
-import { brands } from '../db/schema';
+import { brands, userProfiles } from '../db/schema';
 
 const BrandSchema = z.object({
   name: z.string().min(1),
@@ -11,24 +11,26 @@ const BrandSchema = z.object({
   colors: z.array(z.string()),
   fonts: z.array(z.string()),
   logoKey: z.string().optional(),
+  private: z.boolean().optional().default(false),
 });
 
 export async function listBrands(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  const result = await db
-    .select()
+  const rows = await db
+    .select({ brand: brands, creatorEmail: userProfiles.email })
     .from(brands)
-    .where(eq(brands.userId, userId))
-    .orderBy(sql`last_used_at DESC NULLS LAST`, desc(brands.createdAt));
-  res.json(result);
+    .leftJoin(userProfiles, eq(userProfiles.userId, brands.userId))
+    .where(or(eq(brands.private, false), eq(brands.userId, userId)))
+    .orderBy(sql`${brands.lastUsedAt} DESC NULLS LAST`, desc(brands.createdAt));
+  res.json(rows.map(r => ({ ...r.brand, creatorEmail: r.creatorEmail ?? null })));
 }
 
 export async function createBrand(req: Request, res: Response): Promise<void> {
-  const body = BrandSchema.parse(req.body);
+  const { private: isPrivate, ...rest } = BrandSchema.parse(req.body);
   const userId = req.user!.userId;
   const [brand] = await db
     .insert(brands)
-    .values({ ...body, userId })
+    .values({ ...rest, userId, private: isPrivate })
     .returning();
   res.status(201).json(brand);
 }
@@ -36,10 +38,10 @@ export async function createBrand(req: Request, res: Response): Promise<void> {
 export async function updateBrand(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   const userId = req.user!.userId;
-  const body = BrandSchema.parse(req.body);
+  const { private: isPrivate, ...rest } = BrandSchema.parse(req.body);
   const [brand] = await db
     .update(brands)
-    .set({ ...body, updatedAt: new Date() })
+    .set({ ...rest, private: isPrivate, updatedAt: new Date() })
     .where(and(eq(brands.id, id as string), eq(brands.userId, userId)))
     .returning();
   if (!brand) {
@@ -65,10 +67,9 @@ export async function deleteBrand(req: Request, res: Response): Promise<void> {
 
 export async function markBrandUsed(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
-  const userId = req.user!.userId;
   await db
     .update(brands)
     .set({ lastUsedAt: new Date() })
-    .where(and(eq(brands.id, id as string), eq(brands.userId, userId)));
+    .where(eq(brands.id, id as string));
   res.status(204).send();
 }

@@ -2,10 +2,12 @@
 import { ref, reactive, onMounted } from 'vue';
 import { useBrandStore } from '@/stores/brand.store';
 import { useUiStore } from '@/stores/ui.store';
+import { useAuthStore } from '@/stores/auth.store';
 import type { Brand, BrandFormData } from '@/types/campaign.types';
 
 const brandStore = useBrandStore();
 const ui = useUiStore();
+const auth = useAuthStore();
 
 const TONE_OPTIONS = [
   { value: 'professional', label: 'Professional' },
@@ -26,7 +28,11 @@ const colorInput = ref('#000000');
 const fontInput = ref('');
 
 function emptyForm(): BrandFormData {
-  return { name: '', description: '', tone: '', colors: [], fonts: [] };
+  return { name: '', description: '', tone: '', colors: [], fonts: [], private: false };
+}
+
+function isOwner(brand: Brand): boolean {
+  return brand.userId === auth.profile?.userId;
 }
 
 const form = reactive<BrandFormData>(emptyForm());
@@ -48,6 +54,7 @@ function openEdit(brand: Brand) {
     colors: [...brand.colors],
     fonts: [...brand.fonts],
     logoKey: brand.logoKey,
+    private: brand.private,
   });
   colorInput.value = '#000000';
   fontInput.value = '';
@@ -207,6 +214,23 @@ async function remove(brand: Brand) {
         </div>
       </div>
 
+      <!-- Privacy toggle -->
+      <div class="flex items-center justify-between py-2 border-t border-gray-100">
+        <div>
+          <p class="text-sm font-medium text-gray-700">Private</p>
+          <p class="text-xs text-gray-400">Only you can see this brand</p>
+        </div>
+        <button
+          type="button"
+          :class="['relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+            form.private ? 'bg-brand-600' : 'bg-gray-200']"
+          @click="form.private = !form.private"
+        >
+          <span :class="['pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform',
+            form.private ? 'translate-x-5' : 'translate-x-0']" />
+        </button>
+      </div>
+
       <!-- Actions -->
       <div class="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
         <button type="button" class="text-sm text-gray-500 hover:text-gray-700" @click="cancel">Cancel</button>
@@ -257,13 +281,19 @@ async function remove(brand: Brand) {
 
         <!-- Info -->
         <div class="flex-1 min-w-0">
-          <p class="font-semibold text-gray-900 text-sm truncate">{{ brand.name }}</p>
+          <div class="flex items-center gap-1.5">
+            <p class="font-semibold text-gray-900 text-sm truncate">{{ brand.name }}</p>
+            <svg v-if="brand.private" class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Private">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+          </div>
           <p class="text-xs text-gray-500 capitalize mt-0.5">{{ brand.tone }}</p>
           <p v-if="brand.fonts.length" class="text-xs text-gray-400 mt-0.5 truncate">{{ brand.fonts.join(', ') }}</p>
+          <p v-if="!isOwner(brand) && brand.creatorEmail" class="text-[10px] text-gray-400 mt-0.5 truncate">by {{ brand.creatorEmail }}</p>
         </div>
 
-        <!-- Actions -->
-        <div class="flex items-center gap-2 shrink-0">
+        <!-- Actions (owner only) -->
+        <div v-if="isOwner(brand)" class="flex items-center gap-2 shrink-0">
           <button
             class="text-xs text-gray-400 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             @click="openEdit(brand)"
@@ -272,6 +302,9 @@ async function remove(brand: Brand) {
             class="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors"
             @click="remove(brand)"
           >Delete</button>
+        </div>
+        <div v-else class="shrink-0">
+          <span class="text-[10px] text-gray-300 px-2">shared</span>
         </div>
       </div>
     </div>

@@ -8,6 +8,7 @@ let initPromise: Promise<void> | null = null;
 
 interface UserProfile {
   userId: string;
+  email: string | null;
   role: 'admin' | 'user';
   monthlySpendUsd: number;
   monthlyLimitUsd: number;
@@ -26,8 +27,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!session.value);
   const isAdmin         = computed(() => profile.value?.role === 'admin');
   const monthlySpend    = computed(() => profile.value?.monthlySpendUsd ?? 0);
-  const spendPercent    = computed(() => Math.min(100, (monthlySpend.value / 0.10) * 100));
-  const atLimit         = computed(() => monthlySpend.value >= 0.10 && !isAdmin.value);
+  const spendPercent    = computed(() => Math.min(100, (monthlySpend.value / (profile.value?.monthlyLimitUsd ?? 0.10)) * 100));
+  const atLimit         = computed(() => monthlySpend.value >= (profile.value?.monthlyLimitUsd ?? 0.10) && !isAdmin.value);
 
   async function fetchProfile(): Promise<void> {
     console.log('[auth.store] fetchProfile called');
