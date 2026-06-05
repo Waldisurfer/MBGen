@@ -112,6 +112,7 @@ export async function instructAnimationHandler(req: Request, res: Response): Pro
       promptUsed: newPrompt,
       status: 'completed',
       userId,
+      parentGenerationId: existing.id,
       estimatedCostUsd: cost.toString(),
       actualCostUsd: cost.toString(),
     })

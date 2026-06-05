@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth.store';
 export interface SavedBanner {
   id: string;
   userId: string;
+  campaignId: string | null;
   html: string;
   desc: string;
   promptUsed: string;
@@ -42,15 +43,19 @@ export function useBannerCreate() {
   const lastCostUsd  = ref<number | null>(null);
   const brandInfo    = ref('');
   const brandId      = ref<string | undefined>(undefined);
+  const campaignId   = ref<string | undefined>(undefined);
   const refinement   = ref('');
   const count        = ref(4);
   const parentBannerId = ref<string | undefined>(undefined);
   const auth         = useAuthStore();
 
-  async function fetchSaved(): Promise<void> {
+  async function fetchSaved(params?: { campaignId?: string; liked?: boolean }): Promise<void> {
     isSavedLoading.value = true;
     try {
-      savedBanners.value = await api.get<SavedBanner[]>('/banners');
+      const query: Record<string, string> = {};
+      if (params?.campaignId) query.campaignId = params.campaignId;
+      if (params?.liked !== undefined) query.liked = String(params.liked);
+      savedBanners.value = await api.get<SavedBanner[]>('/banners', query);
     } catch (err: unknown) {
       console.error('[bannerCreate] fetchSaved error:', err instanceof Error ? err.message : String(err));
     } finally {
@@ -87,6 +92,7 @@ export function useBannerCreate() {
       const result = await api.post<CreateResponse>('/banner/create', {
         brandInfo: brandInfo.value,
         brandId: brandId.value,
+        campaignId: campaignId.value,
         count: count.value,
         refinement: refinement.value.trim() || undefined,
         parentBannerId: parentBannerId.value,
@@ -166,7 +172,7 @@ export function useBannerCreate() {
 
   return {
     banners, savedBanners, isLoading, isSavedLoading, error, lastCostUsd,
-    brandInfo, brandId, refinement, count, parentBannerId,
+    brandInfo, brandId, campaignId, refinement, count, parentBannerId,
     create, remove, clear, likeBanner, rateBanner, useAsBase, clearParent, fetchSaved,
   };
 }

@@ -8,6 +8,7 @@ import InstructBar from '@/components/preview/InstructBar.vue';
 import ExportButton from '@/components/preview/ExportButton.vue';
 import { useImages } from '@/composables/useImages';
 import { useImageModels } from '@/composables/useModelList';
+import { useGenerationStore } from '@/stores/generation.store';
 
 const props = defineProps<{
   campaignId: string;
@@ -15,19 +16,28 @@ const props = defineProps<{
 }>();
 
 const { status, imageUrl, generationId, error, estimatedCostUsd, generate, instruct } = useImages();
+const generationStore = useGenerationStore();
 const models = useImageModels();
 const selectedModel = ref('flux-1.1-pro');
 const imageRef = ref<HTMLElement | null>(null);
 
 const activeModel = computed(() => models.value.find((m) => m.id === selectedModel.value));
+const selectedGeneration = computed(() =>
+  generationStore.getSelectedGeneration(props.campaignId, 'image', props.platform) ?? null
+);
+const displayImageUrl = computed(() => imageUrl.value ?? selectedGeneration.value?.content?.imageUrl ?? null);
+const activeGenerationId = computed(() => generationId.value ?? selectedGeneration.value?.id ?? null);
+const displayStatus = computed(() =>
+  status.value !== 'idle' ? status.value : selectedGeneration.value?.status ?? 'idle'
+);
 
 async function handleGenerate() {
   await generate(props.campaignId, props.platform, selectedModel.value);
 }
 
 async function handleInstruct(instruction: string) {
-  if (!generationId.value) return;
-  await instruct(generationId.value, instruction, selectedModel.value);
+  if (!activeGenerationId.value) return;
+  await instruct(activeGenerationId.value, instruction, selectedModel.value);
 }
 </script>
 
@@ -41,17 +51,17 @@ async function handleInstruct(instruction: string) {
       </div>
       <div class="flex items-center gap-2">
         <ExportButton
-          v-if="imageUrl"
+          v-if="displayImageUrl"
           type="image"
-          :image-url="imageUrl"
+          :image-url="displayImageUrl"
           :export-ref="imageRef"
         />
         <Button
           size="sm"
-          :loading="status === 'processing'"
+          :loading="displayStatus === 'processing'"
           @click="handleGenerate"
         >
-          {{ imageUrl ? 'Regenerate' : 'Generate' }}
+          {{ displayImageUrl ? 'Regenerate' : 'Generate' }}
         </Button>
       </div>
       <p v-if="estimatedCostUsd !== null" class="text-xs text-gray-400 mt-1 text-right font-mono">
@@ -64,14 +74,14 @@ async function handleInstruct(instruction: string) {
       <ModelSelector
         v-model="selectedModel"
         :models="models"
-        :disabled="status === 'processing'"
+        :disabled="displayStatus === 'processing'"
       />
     </div>
 
     <!-- Content -->
     <div class="flex-1 min-h-0 rounded-lg overflow-hidden bg-gray-50">
       <!-- Processing skeleton -->
-      <div v-if="status === 'processing'" class="w-full h-full flex flex-col items-center justify-center gap-3 p-6">
+      <div v-if="displayStatus === 'processing'" class="w-full h-full flex flex-col items-center justify-center gap-3 p-6">
         <Skeleton width="100%" height="200px" rounded />
         <p class="text-xs text-gray-400">
           Generating with {{ activeModel?.displayName ?? 'AI' }}...
@@ -80,14 +90,14 @@ async function handleInstruct(instruction: string) {
       </div>
 
       <!-- Error -->
-      <div v-else-if="status === 'failed'" class="p-4 text-sm text-red-600 bg-red-50 rounded-lg h-full flex items-center justify-center">
+      <div v-else-if="displayStatus === 'failed'" class="p-4 text-sm text-red-600 bg-red-50 rounded-lg h-full flex items-center justify-center">
         {{ error ?? 'Generation failed. Try again.' }}
       </div>
 
       <!-- Image result -->
-      <div v-else-if="imageUrl" ref="imageRef" class="relative">
+      <div v-else-if="displayImageUrl" ref="imageRef" class="relative">
         <img
-          :src="imageUrl"
+          :src="displayImageUrl"
           :alt="`Generated image for ${platform}`"
           class="w-full h-auto rounded-lg"
         />
@@ -101,8 +111,8 @@ async function handleInstruct(instruction: string) {
 
     <!-- Instruct bar -->
     <InstructBar
-      v-if="imageUrl"
-      :loading="status === 'processing'"
+      v-if="displayImageUrl"
+      :loading="displayStatus === 'processing'"
       placeholder="Change colors, make it more minimalist, add product focus..."
       @submit="handleInstruct"
     />

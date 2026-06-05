@@ -113,6 +113,7 @@ export async function instructCopyHandler(req: Request, res: Response): Promise<
       promptUsed: newPrompt,
       status: 'completed',
       userId,
+      parentGenerationId: existing.id,
       estimatedCostUsd: cost.toString(),
       actualCostUsd: cost.toString(),
     })

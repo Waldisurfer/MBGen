@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from 'vue';
+import { useRoute } from 'vue-router';
 import html2canvas from 'html2canvas';
 import { useBannerCreate } from '@/composables/useBannerCreate';
 import type { SavedBanner } from '@/composables/useBannerCreate';
@@ -8,11 +9,13 @@ import type { Brand } from '@/types/campaign.types';
 
 const {
   banners, savedBanners, isLoading, isSavedLoading, error, lastCostUsd,
-  brandInfo, brandId, refinement, count, parentBannerId,
+  brandInfo, brandId, campaignId, refinement, count, parentBannerId,
   create, remove, clear, likeBanner, rateBanner, useAsBase, clearParent, fetchSaved,
 } = useBannerCreate();
 
+const route = useRoute();
 const selectedBrand = ref<Brand | null>(null);
+const linkedCampaignId = computed(() => typeof route.query.campaignId === 'string' ? route.query.campaignId : undefined);
 
 watch(selectedBrand, (brand) => {
   if (brand) {
@@ -97,6 +100,8 @@ const parentBanner = computed(() =>
 );
 
 onMounted(async () => {
+  campaignId.value = linkedCampaignId.value;
+  parentBannerId.value = typeof route.query.parentBannerId === 'string' ? route.query.parentBannerId : undefined;
   // Preload fonts
   if (!document.querySelector('link[data-banner-fonts]')) {
     const families = [
@@ -133,6 +138,7 @@ onMounted(async () => {
           <div>
             <h1 class="text-sm font-semibold text-gray-900">Banner Studio</h1>
             <p class="text-xs text-gray-400 mt-0.5">Claude generates the HTML and CSS</p>
+            <p v-if="linkedCampaignId" class="text-xs text-brand-600 mt-1">New banners will be linked to this campaign.</p>
           </div>
 
           <!-- Brand selector -->

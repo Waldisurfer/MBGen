@@ -199,7 +199,7 @@ Use the **Preview** view to review all generated images and videos. Download eac
 
 | Role | Access | Spend Limit |
 |------|--------|------------|
-| User | All features except admin | $0.10/month |
+| User | All features except admin | $10/month |
 | Admin | All features + user management | Unlimited |
 
 Admins can reset user spend and assign the admin role from the `/admin` panel.

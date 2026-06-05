@@ -188,7 +188,7 @@ With R2, images are stored permanently.
 1. Open your Netlify URL → you'll see the login screen
 2. Click **Sign up** → enter your email + password
 3. **First account automatically becomes admin** (unlimited API usage)
-4. All subsequent signups get `user` role ($0.10/month limit)
+4. All subsequent signups get `user` role ($10/month limit)
 5. To promote a teammate: go to **/admin** → Make admin
 
 ---
@@ -206,7 +206,7 @@ The Service Status card should show green for each configured service.
 | Images work | Image Studio → generate an image |
 | Admin panel | Navigate to `/admin` → see user table |
 | Style import | Settings → Brand Style → upload a .css file |
-| Spend limit | Regular user hits $0.10 → gets error message |
+| Spend limit | Regular user hits $10 → gets error message |
 
 ---
 

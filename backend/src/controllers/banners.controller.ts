@@ -14,15 +14,18 @@ const PatchSchema = z.object({
 
 export async function listBanners(req: Request, res: Response): Promise<void> {
   const liked = req.query.liked === 'true' ? true : undefined;
+  const campaignId = typeof req.query.campaignId === 'string' ? req.query.campaignId : undefined;
   const userId = req.user!.userId;
+  const filters = [
+    isNull(banners.deletedAt),
+    eq(banners.userId, userId),
+    ...(liked !== undefined ? [eq(banners.liked, liked)] : []),
+    ...(campaignId ? [eq(banners.campaignId, campaignId)] : []),
+  ];
   const result = await db
     .select()
     .from(banners)
-    .where(
-      liked !== undefined
-        ? and(isNull(banners.deletedAt), eq(banners.liked, liked), eq(banners.userId, userId))
-        : and(isNull(banners.deletedAt), eq(banners.userId, userId))
-    )
+    .where(and(...filters))
     .orderBy(desc(banners.createdAt));
   res.json(result);
 }
@@ -61,7 +64,15 @@ export async function deleteBanner(req: Request, res: Response): Promise<void> {
 export async function getBannerLineage(req: Request, res: Response): Promise<void> {
   const id = req.params.id as string;
   const userId = req.user!.userId;
-  const chain: Array<{ id: string; desc: string; liked: boolean; rating: number | null; createdAt: Date }> = [];
+  const chain: Array<{
+    id: string;
+    campaignId: string | null;
+    desc: string;
+    promptUsed: string;
+    liked: boolean;
+    rating: number | null;
+    createdAt: Date;
+  }> = [];
   let currentId: string | null = id;
   const MAX_DEPTH = 10;
 
@@ -72,7 +83,9 @@ export async function getBannerLineage(req: Request, res: Response): Promise<voi
     const [row] = await db
       .select({
         id: banners.id,
+        campaignId: banners.campaignId,
         desc: banners.desc,
+        promptUsed: banners.promptUsed,
         liked: banners.liked,
         rating: banners.rating,
         parentBannerId: banners.parentBannerId,
@@ -82,7 +95,15 @@ export async function getBannerLineage(req: Request, res: Response): Promise<voi
       .where(ownerCheck)
       .limit(1);
     if (!row) break;
-    chain.push({ id: row.id, desc: row.desc, liked: row.liked, rating: row.rating, createdAt: row.createdAt });
+    chain.push({
+      id: row.id,
+      campaignId: row.campaignId,
+      desc: row.desc,
+      promptUsed: row.promptUsed,
+      liked: row.liked,
+      rating: row.rating,
+      createdAt: row.createdAt,
+    });
     currentId = (row.parentBannerId as string | null | undefined) ?? null;
   }
 

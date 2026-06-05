@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { computed, ref, watch, onUnmounted } from 'vue';
 import { gsap } from 'gsap';
 import Button from '@/components/ui/Button.vue';
 import PlatformBadge from '@/components/preview/PlatformBadge.vue';
 import InstructBar from '@/components/preview/InstructBar.vue';
 import Skeleton from '@/components/ui/Skeleton.vue';
 import { useAnimations } from '@/composables/useAnimations';
+import { useGenerationStore } from '@/stores/generation.store';
 import type { GsapAnimationConfig, AnimationElement } from '@/types/generation.types';
 
 const props = defineProps<{
@@ -14,8 +15,17 @@ const props = defineProps<{
 }>();
 
 const { isLoading, animationConfig, generationId, error, generate, instruct } = useAnimations();
+const generationStore = useGenerationStore();
 const stageRef = ref<HTMLElement | null>(null);
 let timeline: gsap.core.Timeline | null = null;
+
+const selectedGeneration = computed(() =>
+  generationStore.getSelectedGeneration(props.campaignId, 'animation', props.platform) ?? null
+);
+const displayConfig = computed(() =>
+  animationConfig.value ?? selectedGeneration.value?.content?.animationConfig ?? null
+);
+const activeGenerationId = computed(() => generationId.value ?? selectedGeneration.value?.id ?? null);
 
 function applyStyle(el: HTMLElement, style: AnimationElement['style']): void {
   Object.entries(style).forEach(([key, value]) => {
@@ -56,7 +66,7 @@ function playAnimation(config: GsapAnimationConfig): void {
   timeline = tl;
 }
 
-watch(animationConfig, (config) => {
+watch(displayConfig, (config) => {
   if (config) playAnimation(config);
 });
 
@@ -67,8 +77,8 @@ async function handleGenerate() {
 }
 
 async function handleInstruct(instruction: string) {
-  if (!generationId.value) return;
-  await instruct(generationId.value, instruction);
+  if (!activeGenerationId.value) return;
+  await instruct(activeGenerationId.value, instruction);
 }
 </script>
 
@@ -81,7 +91,7 @@ async function handleInstruct(instruction: string) {
         <PlatformBadge :platform="platform" />
       </div>
       <Button size="sm" :loading="isLoading" @click="handleGenerate">
-        {{ animationConfig ? 'Regenerate' : 'Generate' }}
+        {{ displayConfig ? 'Regenerate' : 'Generate' }}
       </Button>
     </div>
 
@@ -97,10 +107,10 @@ async function handleInstruct(instruction: string) {
       </div>
 
       <div
-        v-else-if="animationConfig"
+        v-else-if="displayConfig"
         ref="stageRef"
         class="w-full rounded-lg overflow-hidden"
-        :style="{ height: '200px', position: 'relative', background: animationConfig.background }"
+        :style="{ height: '200px', position: 'relative', background: displayConfig.background }"
       />
 
       <div v-else class="flex items-center justify-center h-48 text-sm text-gray-400">
@@ -109,7 +119,7 @@ async function handleInstruct(instruction: string) {
     </div>
 
     <InstructBar
-      v-if="animationConfig"
+      v-if="displayConfig"
       :loading="isLoading"
       placeholder="Make it faster, change the entrance animation, add a bounce effect..."
       @submit="handleInstruct"

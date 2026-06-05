@@ -2,7 +2,7 @@ import { db } from '../db/client';
 import { userProfiles } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
 
-export const MONTHLY_LIMIT_USD = 0.10;
+export const MONTHLY_LIMIT_USD = 10;
 
 export async function checkSpendLimit(userId: string, role: string, estimatedCost: number): Promise<void> {
   if (role === 'admin') return;

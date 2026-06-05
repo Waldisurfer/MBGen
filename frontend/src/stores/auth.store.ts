@@ -27,8 +27,9 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!session.value);
   const isAdmin         = computed(() => profile.value?.role === 'admin');
   const monthlySpend    = computed(() => profile.value?.monthlySpendUsd ?? 0);
-  const spendPercent    = computed(() => Math.min(100, (monthlySpend.value / (profile.value?.monthlyLimitUsd ?? 0.10)) * 100));
-  const atLimit         = computed(() => monthlySpend.value >= (profile.value?.monthlyLimitUsd ?? 0.10) && !isAdmin.value);
+  const monthlyLimit    = computed(() => profile.value?.monthlyLimitUsd ?? 0);
+  const spendPercent    = computed(() => monthlyLimit.value > 0 ? Math.min(100, (monthlySpend.value / monthlyLimit.value) * 100) : 0);
+  const atLimit         = computed(() => monthlyLimit.value > 0 && monthlySpend.value >= monthlyLimit.value && !isAdmin.value);
 
   async function fetchProfile(): Promise<void> {
     console.log('[auth.store] fetchProfile called');
@@ -143,7 +144,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     session, user, profile, isLoading, error,
-    isAuthenticated, isAdmin, monthlySpend, spendPercent, atLimit, isPending,
+    isAuthenticated, isAdmin, monthlySpend, monthlyLimit, spendPercent, atLimit, isPending,
     init, signIn, signUp, signOut, refreshProfile,
   };
 });

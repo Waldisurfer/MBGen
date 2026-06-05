@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import {
   generateBannerSuggestions,
   generateBannerVariationsFromClaude,
@@ -11,7 +11,7 @@ import { checkSpendLimit, recordSpend } from '../utils/spend';
 import { CLAUDE_COSTS } from '../config/models';
 import { getUserStyleContext } from './styles.controller';
 import { db } from '../db/client';
-import { brands, banners } from '../db/schema';
+import { brands, banners, campaigns } from '../db/schema';
 
 async function resolveBrandInfo(_userId: string, brandId: string | undefined, inlineBrandInfo: string): Promise<string> {
   if (!brandId) return inlineBrandInfo;
@@ -93,6 +93,7 @@ const TopRatedContextSchema = z.object({
 const CreateSchema = z.object({
   brandInfo:       z.string().max(2000).default(''),
   brandId:         z.string().uuid().optional(),
+  campaignId:      z.string().uuid().optional(),
   count:           z.number().int().min(1).max(6),
   refinement:      z.string().max(500).optional(),
   parentBannerId:  z.string().uuid().optional(),
@@ -102,12 +103,23 @@ const CreateSchema = z.object({
 });
 
 export async function createBanners(req: Request, res: Response): Promise<void> {
-  const { brandInfo: inlineBrandInfo, brandId, count, refinement, parentBannerId, topRatedContext } = CreateSchema.parse(req.body);
+  const { brandInfo: inlineBrandInfo, brandId, campaignId, count, refinement, parentBannerId, topRatedContext } = CreateSchema.parse(req.body);
   const userId = req.user!.userId;
   const brandInfo = await resolveBrandInfo(userId, brandId, inlineBrandInfo);
   const cost = CLAUDE_COSTS.bannerGenerate;
   console.log(`[banner] createBanners userId=${userId} count=${count} hasRefinement=${!!refinement} parentBannerId=${parentBannerId ?? 'none'}`);
   await checkSpendLimit(userId, req.user!.role, cost);
+  if (campaignId) {
+    const [campaign] = await db
+      .select({ id: campaigns.id })
+      .from(campaigns)
+      .where(and(eq(campaigns.id, campaignId), eq(campaigns.userId, userId)))
+      .limit(1);
+    if (!campaign) {
+      res.status(404).json({ error: 'Campaign not found' });
+      return;
+    }
+  }
   const styleContext = await getUserStyleContext(userId);
   const promptUsed = [
     brandInfo,
@@ -120,6 +132,7 @@ export async function createBanners(req: Request, res: Response): Promise<void> 
     .insert(banners)
     .values(generated.map(b => ({
       userId,
+      ...(campaignId ? { campaignId } : {}),
       html: b.html,
       desc: b.desc,
       promptUsed,

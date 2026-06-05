@@ -86,6 +86,7 @@ export const generations = pgTable('generations', {
 export const banners = pgTable('banners', {
   id:             uuid('id').primaryKey().defaultRandom(),
   userId:         text('user_id').notNull(),
+  campaignId:     uuid('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
   html:           text('html').notNull(),
   desc:           text('desc').notNull(),
   promptUsed:     text('prompt_used').notNull(),
@@ -99,6 +100,7 @@ export const banners = pgTable('banners', {
   createdAt:      timestamp('created_at').defaultNow().notNull(),
 }, (t) => [
   index('banners_user_id_idx').on(t.userId),
+  index('banners_campaign_id_idx').on(t.campaignId),
   index('banners_liked_idx').on(t.liked),
   index('banners_deleted_at_idx').on(t.deletedAt),
   index('banners_parent_banner_idx').on(t.parentBannerId),

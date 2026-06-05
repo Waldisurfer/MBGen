@@ -56,6 +56,20 @@ export interface Generation {
   model?: string | null;
   estimatedCostUsd?: string | null;
   actualCostUsd?: string | null;
+  liked?: boolean | null;
+  rating?: number | null;
+  notes?: string | null;
+  roundLabel?: string | null;
+  ctr?: string | null;
+  parentGenerationId?: string | null;
   costUsd?: number;
   createdAt: string;
+}
+
+export interface GenerationFeedbackPatch {
+  liked?: boolean;
+  rating?: number | null;
+  ctr?: number | null;
+  notes?: string | null;
+  roundLabel?: string | null;
 }

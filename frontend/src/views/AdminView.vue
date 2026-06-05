@@ -23,6 +23,9 @@ const updatingStatus = ref<string | null>(null);
 const totalSpend = computed(() =>
   users.value.reduce((sum, u) => sum + u.monthlySpendUsd, 0)
 );
+const monthlyLimit = computed(() =>
+  users.value.find((u) => u.role !== 'admin')?.monthlyLimitUsd ?? users.value[0]?.monthlyLimitUsd ?? 0
+);
 
 async function load() {
   loading.value = true;
@@ -75,7 +78,7 @@ onMounted(load);
       </div>
       <div class="bg-white rounded-xl border border-gray-200 p-4">
         <p class="text-xs text-gray-500 mb-1">Per-user monthly limit</p>
-        <p class="text-2xl font-bold text-gray-900">$0.10</p>
+        <p class="text-2xl font-bold text-gray-900">${{ monthlyLimit.toFixed(2) }}</p>
       </div>
     </div>
 

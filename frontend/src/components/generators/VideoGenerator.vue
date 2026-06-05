@@ -7,6 +7,7 @@ import InstructBar from '@/components/preview/InstructBar.vue';
 import ExportButton from '@/components/preview/ExportButton.vue';
 import { useVideo } from '@/composables/useVideo';
 import { useVideoModels } from '@/composables/useModelList';
+import { useGenerationStore } from '@/stores/generation.store';
 
 const props = defineProps<{
   campaignId: string;
@@ -14,18 +15,27 @@ const props = defineProps<{
 }>();
 
 const { status, videoUrl, generationId, progress, error, generate, instruct } = useVideo();
+const generationStore = useGenerationStore();
 const models = useVideoModels();
 const selectedModel = ref('veo-2');
 
 const activeModel = computed(() => models.value.find((m) => m.id === selectedModel.value));
+const selectedGeneration = computed(() =>
+  generationStore.getSelectedGeneration(props.campaignId, 'video', props.platform) ?? null
+);
+const displayVideoUrl = computed(() => videoUrl.value ?? selectedGeneration.value?.content?.videoUrl ?? null);
+const activeGenerationId = computed(() => generationId.value ?? selectedGeneration.value?.id ?? null);
+const displayStatus = computed(() =>
+  status.value !== 'idle' ? status.value : selectedGeneration.value?.status ?? 'idle'
+);
 
 async function handleGenerate() {
   await generate(props.campaignId, props.platform, selectedModel.value);
 }
 
 async function handleInstruct(instruction: string) {
-  if (!generationId.value) return;
-  await instruct(generationId.value, instruction, selectedModel.value);
+  if (!activeGenerationId.value) return;
+  await instruct(activeGenerationId.value, instruction, selectedModel.value);
 }
 </script>
 
@@ -39,16 +49,16 @@ async function handleInstruct(instruction: string) {
       </div>
       <div class="flex items-center gap-2">
         <ExportButton
-          v-if="videoUrl"
+          v-if="displayVideoUrl"
           type="video"
-          :video-url="videoUrl"
+          :video-url="displayVideoUrl"
         />
         <Button
           size="sm"
-          :loading="status === 'processing'"
+          :loading="displayStatus === 'processing'"
           @click="handleGenerate"
         >
-          {{ videoUrl ? 'Regenerate' : 'Generate' }}
+          {{ displayVideoUrl ? 'Regenerate' : 'Generate' }}
         </Button>
       </div>
     </div>
@@ -58,7 +68,7 @@ async function handleInstruct(instruction: string) {
       <ModelSelector
         v-model="selectedModel"
         :models="models"
-        :disabled="status === 'processing'"
+        :disabled="displayStatus === 'processing'"
       />
     </div>
 
@@ -66,7 +76,7 @@ async function handleInstruct(instruction: string) {
     <div class="flex-1 min-h-0 rounded-lg overflow-hidden bg-gray-50">
       <!-- Processing state -->
       <div
-        v-if="status === 'processing'"
+        v-if="displayStatus === 'processing'"
         class="h-full flex flex-col items-center justify-center gap-4 p-6"
       >
         <div class="w-full bg-gray-200 rounded-full h-2">
@@ -83,7 +93,7 @@ async function handleInstruct(instruction: string) {
 
       <!-- Error -->
       <div
-        v-else-if="status === 'failed'"
+        v-else-if="displayStatus === 'failed'"
         class="p-4 text-sm text-red-600 bg-red-50 rounded-lg h-full flex items-center justify-center"
       >
         {{ error ?? 'Video generation failed. Try again.' }}
@@ -91,8 +101,8 @@ async function handleInstruct(instruction: string) {
 
       <!-- Video result -->
       <video
-        v-else-if="videoUrl"
-        :src="videoUrl"
+        v-else-if="displayVideoUrl"
+        :src="displayVideoUrl"
         controls
         class="w-full rounded-lg"
         preload="metadata"
@@ -105,8 +115,8 @@ async function handleInstruct(instruction: string) {
     </div>
 
     <InstructBar
-      v-if="videoUrl"
-      :loading="status === 'processing'"
+      v-if="displayVideoUrl"
+      :loading="displayStatus === 'processing'"
       placeholder="Make it more cinematic, change the pacing, add more energy..."
       @submit="handleInstruct"
     />
