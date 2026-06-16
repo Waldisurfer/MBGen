@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { api } from '@/lib/api';
 import { useGenerationStore } from '@/stores/generation.store';
+import { useAuthStore } from '@/stores/auth.store';
 import type { Generation, GsapAnimationConfig } from '@/types/generation.types';
 
 export function useAnimations() {
@@ -9,6 +10,7 @@ export function useAnimations() {
   const generationId = ref<string | null>(null);
   const error = ref<string | null>(null);
   const store = useGenerationStore();
+  const auth = useAuthStore();
 
   async function generate(campaignId: string, platform: string): Promise<Generation | null> {
     isLoading.value = true;
@@ -23,6 +25,7 @@ export function useAnimations() {
       store.setGeneration(generation);
       generationId.value = generation.id;
       animationConfig.value = (generation.content as { animationConfig?: GsapAnimationConfig }).animationConfig ?? null;
+      void auth.refreshProfile();
       return generation;
     } catch (err) {
       error.value = (err as Error).message;
@@ -44,6 +47,7 @@ export function useAnimations() {
       store.setGeneration(generation);
       generationId.value = generation.id;
       animationConfig.value = (generation.content as { animationConfig?: GsapAnimationConfig }).animationConfig ?? null;
+      void auth.refreshProfile();
       return generation;
     } catch (err) {
       error.value = (err as Error).message;

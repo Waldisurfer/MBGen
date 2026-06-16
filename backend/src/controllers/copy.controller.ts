@@ -85,7 +85,7 @@ export async function instructCopyHandler(req: Request, res: Response): Promise<
   const [campaign] = await db
     .select()
     .from(campaigns)
-    .where(and(eq(campaigns.id, existing.campaignId), eq(campaigns.userId, userId)))
+    .where(eq(campaigns.id, existing.campaignId))
     .limit(1);
 
 
@@ -113,6 +113,7 @@ export async function instructCopyHandler(req: Request, res: Response): Promise<
       promptUsed: newPrompt,
       status: 'completed',
       userId,
+      parentGenerationId: existing.id,
       estimatedCostUsd: cost.toString(),
       actualCostUsd: cost.toString(),
     })

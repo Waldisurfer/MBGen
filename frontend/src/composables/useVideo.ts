@@ -1,9 +1,10 @@
 import { ref, onUnmounted } from 'vue';
 import { api } from '@/lib/api';
 import { useGenerationStore } from '@/stores/generation.store';
+import { useAuthStore } from '@/stores/auth.store';
 import type { Generation } from '@/types/generation.types';
 
-interface VideoStartResponse {
+interface VideoStartResponse extends Generation {
   generationId: string;
   operationName: string;
 }
@@ -32,6 +33,7 @@ export function useVideo() {
   const progress = ref(0);
   const error = ref<string | null>(null);
   const store = useGenerationStore();
+  const auth = useAuthStore();
 
   let progressTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -63,6 +65,7 @@ export function useVideo() {
       });
 
       generationId.value = response.generationId;
+      store.setGeneration(response);
       console.log(`[useVideo] generate started generationId=${response.generationId} operationName=${response.operationName}`);
 
       const startTime = Date.now();
@@ -81,11 +84,17 @@ export function useVideo() {
             status.value = 'completed';
             videoUrl.value = d.videoUrl;
             progress.value = 100;
+            store.updateGeneration(response.generationId, {
+              status: 'completed',
+              content: { videoUrl: d.videoUrl },
+            });
+            void auth.refreshProfile();
             cleanup();
           } else if (d.status === 'failed') {
             console.warn(`[useVideo] generation failed: ${d.error}`);
             status.value = 'failed';
             error.value = d.error ?? 'Video generation failed';
+            store.updateGeneration(response.generationId, { status: 'failed' });
             cleanup();
           }
         }
@@ -121,6 +130,7 @@ export function useVideo() {
       });
 
       generationId.value = response.generationId;
+      store.setGeneration(response);
       console.log(`[useVideo] instruct started generationId=${response.generationId}`);
 
       const startTime = Date.now();
@@ -139,11 +149,17 @@ export function useVideo() {
             status.value = 'completed';
             videoUrl.value = d.videoUrl;
             progress.value = 100;
+            store.updateGeneration(response.generationId, {
+              status: 'completed',
+              content: { videoUrl: d.videoUrl },
+            });
+            void auth.refreshProfile();
             cleanup();
           } else if (d.status === 'failed') {
             console.warn(`[useVideo] instruct failed: ${d.error}`);
             status.value = 'failed';
             error.value = d.error ?? 'Video generation failed';
+            store.updateGeneration(response.generationId, { status: 'failed' });
             cleanup();
           }
         }

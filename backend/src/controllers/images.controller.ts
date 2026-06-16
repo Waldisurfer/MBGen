@@ -206,6 +206,9 @@ export async function instructImageHandler(req: Request, res: Response): Promise
   // Inherit model from existing generation unless overridden
   const modelId = requestModelId ?? existing.model ?? DEFAULT_IMAGE_MODEL_ID;
   console.log(`[images] instructImage using modelId=${modelId}`);
+  const modelConfig = IMAGE_MODELS.find(m => m.id === modelId);
+  const estimatedCost = modelConfig?.estimatedCostUsd ?? 0.04;
+  await checkSpendLimit(userId, req.user!.role, estimatedCost);
 
   const currentOutput = (existing.content as { imageUrl?: string }).imageUrl ?? '';
   console.log('[images] Rewriting prompt...');
@@ -227,6 +230,8 @@ export async function instructImageHandler(req: Request, res: Response): Promise
       externalJobId: predictionId,
       model: modelId,
       userId,
+      parentGenerationId: existing.id,
+      estimatedCostUsd: estimatedCost.toString(),
     })
     .returning();
 

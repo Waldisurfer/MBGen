@@ -1,23 +1,49 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { Generation } from '@/types/generation.types';
+import type { Generation, GenerationFeedbackPatch } from '@/types/generation.types';
 import { api } from '@/lib/api';
 
 export const useGenerationStore = defineStore('generation', () => {
   // Map of generationId -> Generation
   const generations = ref<Map<string, Generation>>(new Map());
+  const selectedBySlot = ref<Map<string, string>>(new Map());
   // Active EventSource instances for SSE
   const eventSources = ref<Map<string, EventSource>>(new Map());
 
+  function slotKey(campaignId: string, type: Generation['type'], platform: string): string {
+    return `${campaignId}:${type}:${platform}`;
+  }
+
   function setGeneration(gen: Generation): void {
-    generations.value.set(gen.id, gen);
+    const next = new Map(generations.value);
+    next.set(gen.id, gen);
+    generations.value = next;
+    selectGeneration(gen);
   }
 
   function updateGeneration(id: string, partial: Partial<Generation>): void {
     const existing = generations.value.get(id);
     if (existing) {
-      generations.value.set(id, { ...existing, ...partial });
+      const next = new Map(generations.value);
+      next.set(id, { ...existing, ...partial });
+      generations.value = next;
     }
+  }
+
+  function selectGeneration(gen: Generation): void {
+    const next = new Map(selectedBySlot.value);
+    next.set(slotKey(gen.campaignId, gen.type, gen.platform), gen.id);
+    selectedBySlot.value = next;
+  }
+
+  function getSelectedGeneration(
+    campaignId: string,
+    type: Generation['type'],
+    platform: string
+  ): Generation | undefined {
+    const selectedId = selectedBySlot.value.get(slotKey(campaignId, type, platform));
+    if (selectedId) return generations.value.get(selectedId);
+    return getLatestGeneration(campaignId, type, platform);
   }
 
   function getGenerationsForCampaign(campaignId: string): Generation[] {
@@ -41,7 +67,35 @@ export const useGenerationStore = defineStore('generation', () => {
 
   async function fetchHistory(campaignId: string): Promise<void> {
     const result = await api.get<Generation[]>(`/history/${campaignId}`);
-    result.forEach((g) => generations.value.set(g.id, g));
+    const next = new Map(generations.value);
+    result.forEach((g) => next.set(g.id, g));
+    generations.value = next;
+  }
+
+  async function fetchAllHistory(params?: { liked?: boolean; sort?: 'recent' | 'top' }): Promise<Generation[]> {
+    const query = new URLSearchParams();
+    if (params?.liked !== undefined) query.set('liked', String(params.liked));
+    if (params?.sort) query.set('sort', params.sort);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    const result = await api.get<Generation[]>(`/history${suffix}`);
+    const next = new Map(generations.value);
+    result.forEach((g) => next.set(g.id, g));
+    generations.value = next;
+    return result;
+  }
+
+  async function patchGeneration(id: string, patch: GenerationFeedbackPatch): Promise<Generation> {
+    const updated = await api.patch<Generation>(`/history/${id}`, patch);
+    updateGeneration(id, updated);
+    return updated;
+  }
+
+  async function fetchLineage(id: string): Promise<Generation[]> {
+    const result = await api.get<Generation[]>(`/history/lineage/${id}`);
+    const next = new Map(generations.value);
+    result.forEach((g) => next.set(g.id, g));
+    generations.value = next;
+    return result;
   }
 
   async function startVideoSSE(
@@ -82,16 +136,23 @@ export const useGenerationStore = defineStore('generation', () => {
   function clearAll(): void {
     eventSources.value.forEach((es) => es.close());
     eventSources.value.clear();
-    generations.value.clear();
+    generations.value = new Map();
+    selectedBySlot.value = new Map();
   }
 
   return {
     generations,
+    selectedBySlot,
     setGeneration,
     updateGeneration,
+    selectGeneration,
+    getSelectedGeneration,
     getGenerationsForCampaign,
     getLatestGeneration,
     fetchHistory,
+    fetchAllHistory,
+    patchGeneration,
+    fetchLineage,
     startVideoSSE,
     closeSSE,
     clearAll,

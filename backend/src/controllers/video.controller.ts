@@ -21,6 +21,7 @@ import {
   DEFAULT_VIDEO_MODEL_ID,
   getVideoModel,
 } from '../config/models';
+import { checkSpendLimit, recordSpend } from '../utils/spend';
 import type { StructuredBrief } from '../types/api.types';
 
 const GenerateSchema = z.object({
@@ -54,6 +55,7 @@ export async function generateVideoHandler(req: Request, res: Response): Promise
     });
     return;
   }
+  await checkSpendLimit(userId, req.user!.role, modelConfig.estimatedCostUsd);
 
   const [campaign] = await db
     .select()
@@ -97,11 +99,12 @@ export async function generateVideoHandler(req: Request, res: Response): Promise
       externalJobId,
       model: modelId,
       userId,
+      estimatedCostUsd: modelConfig.estimatedCostUsd.toString(),
     })
     .returning();
 
   console.log(`[video] Created generation id=${generation.id}`);
-  res.status(201).json({ generationId: generation.id, operationName: externalJobId });
+  res.status(201).json({ ...generation, generationId: generation.id, operationName: externalJobId });
 }
 
 /** Issues a 60-second SSE token for a generation the caller owns.
@@ -194,13 +197,23 @@ export async function videoStatusSSE(req: Request, res: Response): Promise<void>
             const key = generateKey('videos', generation.id, 'mp4');
             const videoUrl = await downloadAndUpload(result.videoUri, key, { disposition: 'attachment' });
             console.log(`[video] SSE Google R2 upload done: ${videoUrl}`);
+            const actualCost = parseFloat(generation.estimatedCostUsd ?? modelConfig.estimatedCostUsd.toString());
             await db
               .update(generations)
-              .set({ content: { videoUrl }, status: 'completed' })
+              .set({ content: { videoUrl }, status: 'completed', actualCostUsd: actualCost.toString() })
               .where(eq(generations.id, generation.id));
+            try {
+              await recordSpend(userId, actualCost);
+            } catch (spendErr) {
+              console.error('[video] Failed to record spend after completed Google video:', spendErr);
+            }
             send({ status: 'completed', videoUrl });
           } catch (uploadErr) {
             console.error('[video] SSE Google R2 upload failed:', uploadErr);
+            await db
+              .update(generations)
+              .set({ status: 'failed' })
+              .where(eq(generations.id, generation.id));
             send({ status: 'failed', error: 'Failed to transfer video to storage' });
           }
           res.end();
@@ -230,13 +243,23 @@ export async function videoStatusSSE(req: Request, res: Response): Promise<void>
             const key = generateKey('videos', generation.id, 'mp4');
             const videoUrl = await downloadAndUpload(result.videoUrl, key, { disposition: 'attachment' });
             console.log(`[video] SSE Replicate R2 upload done: ${videoUrl}`);
+            const actualCost = parseFloat(generation.estimatedCostUsd ?? modelConfig.estimatedCostUsd.toString());
             await db
               .update(generations)
-              .set({ content: { videoUrl }, status: 'completed' })
+              .set({ content: { videoUrl }, status: 'completed', actualCostUsd: actualCost.toString() })
               .where(eq(generations.id, generation.id));
+            try {
+              await recordSpend(userId, actualCost);
+            } catch (spendErr) {
+              console.error('[video] Failed to record spend after completed Replicate video:', spendErr);
+            }
             send({ status: 'completed', videoUrl });
           } catch (uploadErr) {
             console.error('[video] SSE Replicate R2 upload failed:', uploadErr);
+            await db
+              .update(generations)
+              .set({ status: 'failed' })
+              .where(eq(generations.id, generation.id));
             send({ status: 'failed', error: 'Failed to transfer video to storage' });
           }
           res.end();
@@ -293,6 +316,7 @@ export async function instructVideoHandler(req: Request, res: Response): Promise
     });
     return;
   }
+  await checkSpendLimit(userId, req.user!.role, modelConfig.estimatedCostUsd);
 
   const currentOutput = (existing.content as { videoUrl?: string }).videoUrl ?? '';
   const newPrompt = await rewritePrompt(existing.promptUsed, currentOutput, instruction);
@@ -319,10 +343,12 @@ export async function instructVideoHandler(req: Request, res: Response): Promise
       externalJobId,
       model: modelId,
       userId,
+      parentGenerationId: existing.id,
+      estimatedCostUsd: modelConfig.estimatedCostUsd.toString(),
     })
     .returning();
 
-  res.status(201).json({ generationId: generation.id, operationName: externalJobId });
+  res.status(201).json({ ...generation, generationId: generation.id, operationName: externalJobId });
 }
 
 export function getVideoModelsHandler(_req: Request, res: Response): void {

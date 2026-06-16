@@ -84,7 +84,10 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       const role = adminEmails.includes(email.toLowerCase()) ? 'admin' : 'user';
       const status = role === 'admin' ? 'active' : 'pending';
       console.log(`[auth] Assigning role: ${role}, status: ${status}`);
-      [profile] = await db.insert(userProfiles).values({ userId, role, status }).returning();
+      [profile] = await db.insert(userProfiles).values({ userId, email: email || null, role, status }).returning();
+    } else if (email && profile.email !== email) {
+      // Keep email in sync if it changes
+      [profile] = await db.update(userProfiles).set({ email }).where(eq(userProfiles.userId, userId)).returning();
     }
 
     // Reset monthly spend if calendar month has changed

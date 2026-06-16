@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import Button from '@/components/ui/Button.vue';
 import Skeleton from '@/components/ui/Skeleton.vue';
 import PlatformBadge from '@/components/preview/PlatformBadge.vue';
 import InstructBar from '@/components/preview/InstructBar.vue';
 import ExportButton from '@/components/preview/ExportButton.vue';
 import { useCopy } from '@/composables/useCopy';
-import type { Generation } from '@/types/generation.types';
+import { useGenerationStore } from '@/stores/generation.store';
 
 const props = defineProps<{
   campaignId: string;
@@ -14,18 +14,21 @@ const props = defineProps<{
 }>();
 
 const { isLoading, error, lastCostUsd, generate, instruct } = useCopy();
-const generation = ref<Generation | null>(null);
+const generationStore = useGenerationStore();
 const contentRef = ref<HTMLElement | null>(null);
 
+const generation = computed(() =>
+  generationStore.getSelectedGeneration(props.campaignId, 'copy', props.platform) ?? null
+);
 const copyText = () => generation.value?.content?.text ?? '';
 
 async function handleGenerate() {
-  generation.value = await generate(props.campaignId, props.platform);
+  await generate(props.campaignId, props.platform);
 }
 
 async function handleInstruct(instruction: string) {
   if (!generation.value) return;
-  generation.value = await instruct(generation.value.id, instruction);
+  await instruct(generation.value.id, instruction);
 }
 
 function handleCopy() {

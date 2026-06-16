@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { db } from '../db/client';
 import { userProfiles } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { MONTHLY_LIMIT_USD } from '../utils/spend';
 
 function getSupabase() {
   return createClient(
@@ -107,9 +108,10 @@ export async function getProfileHandler(req: Request, res: Response): Promise<vo
   const profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });
   res.json({
     userId,
+    email: profile?.email ?? null,
     role: req.user!.role,
     monthlySpendUsd: req.user!.monthlySpendUsd,
-    monthlyLimitUsd: 0.10,
+    monthlyLimitUsd: MONTHLY_LIMIT_USD,
     styleGuidelines: profile?.styleGuidelines ?? null,
     hasStyle: !!profile?.styleFileUrl,
   });

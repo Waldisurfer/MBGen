@@ -126,11 +126,19 @@ export function useImages() {
         if (statusResponse.status === 'completed' && statusResponse.imageUrl) {
           status.value = 'completed';
           imageUrl.value = statusResponse.imageUrl;
+          if (generationId.value) {
+            store.updateGeneration(generationId.value, {
+              status: 'completed',
+              content: { imageUrl: statusResponse.imageUrl },
+            });
+          }
+          void auth.refreshProfile();
           stopPolling();
         } else if (statusResponse.status === 'failed') {
           console.warn(`[useImages] instruct failed: ${statusResponse.error}`);
           status.value = 'failed';
           error.value = statusResponse.error ?? 'Failed';
+          if (generationId.value) store.updateGeneration(generationId.value, { status: 'failed' });
           stopPolling();
         }
       }, 2000);
