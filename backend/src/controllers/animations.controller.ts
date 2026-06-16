@@ -8,6 +8,7 @@ import { checkSpendLimit, recordSpend } from '../utils/spend';
 import { CLAUDE_COSTS } from '../config/models';
 import { getUserStyleContext } from './styles.controller';
 import type { StructuredBrief } from '../types/api.types';
+import { logger } from '../lib/logger.js';
 
 const GenerateSchema = z.object({
   campaignId: z.string().uuid(),
@@ -23,7 +24,7 @@ export async function generateAnimationHandler(req: Request, res: Response): Pro
   const { campaignId, platform } = GenerateSchema.parse(req.body);
   const userId = req.user!.userId;
   const cost = CLAUDE_COSTS.animationGenerate;
-  console.log(`[animations] generateAnimation campaignId=${campaignId} platform=${platform} userId=${userId} cost=$${cost}`);
+  logger.debug(`[animations] generateAnimation campaignId=${campaignId} platform=${platform} userId=${userId} cost=$${cost}`);
   await checkSpendLimit(userId, req.user!.role, cost);
 
   const [campaign] = await db
@@ -33,7 +34,7 @@ export async function generateAnimationHandler(req: Request, res: Response): Pro
     .limit(1);
 
   if (!campaign) {
-    console.warn(`[animations] Campaign ${campaignId} not found`);
+    logger.warn(`[animations] Campaign ${campaignId} not found`);
     res.status(404).json({ error: 'Campaign not found' });
     return;
   }
@@ -41,10 +42,10 @@ export async function generateAnimationHandler(req: Request, res: Response): Pro
   const brief = campaign.brief as StructuredBrief;
   const prompt = `Platform: ${platform}, Visual: ${brief.visualDirection}, Concept: ${brief.coreConcept}`;
   const styleContext = await getUserStyleContext(userId);
-  console.log(`[animations] Calling Claude generateAnimationConfig, hasStyleContext=${!!styleContext}`);
+  logger.debug(`[animations] Calling Claude generateAnimationConfig, hasStyleContext=${!!styleContext}`);
 
   const animationConfig = await generateAnimationConfig(brief, platform, undefined, styleContext);
-  console.log(`[animations] animationConfig elements=${(animationConfig as { elements?: unknown[] }).elements?.length ?? 0}`);
+  logger.debug(`[animations] animationConfig elements=${(animationConfig as { elements?: unknown[] }).elements?.length ?? 0}`);
   await recordSpend(userId, cost);
 
   const [generation] = await db
@@ -62,14 +63,14 @@ export async function generateAnimationHandler(req: Request, res: Response): Pro
     })
     .returning();
 
-  console.log(`[animations] Saved generation id=${generation.id}`);
+  logger.debug(`[animations] Saved generation id=${generation.id}`);
   res.status(201).json({ ...generation, costUsd: cost });
 }
 
 export async function instructAnimationHandler(req: Request, res: Response): Promise<void> {
   const { generationId, instruction } = InstructSchema.parse(req.body);
   const userId = req.user!.userId;
-  console.log(`[animations] instructAnimation generationId=${generationId} instruction="${instruction}" userId=${userId}`);
+  logger.debug(`[animations] instructAnimation generationId=${generationId} instruction="${instruction}" userId=${userId}`);
 
   const [existing] = await db
     .select()
@@ -78,7 +79,7 @@ export async function instructAnimationHandler(req: Request, res: Response): Pro
     .limit(1);
 
   if (!existing) {
-    console.warn(`[animations] Generation ${generationId} not found`);
+    logger.warn(`[animations] Generation ${generationId} not found`);
     res.status(404).json({ error: 'Generation not found' });
     return;
   }
@@ -89,17 +90,17 @@ export async function instructAnimationHandler(req: Request, res: Response): Pro
     .where(and(eq(campaigns.id, existing.campaignId), eq(campaigns.userId, userId)))
     .limit(1);
   const cost = CLAUDE_COSTS.animationGenerate + CLAUDE_COSTS.rewritePrompt;
-  console.log(`[animations] instructAnimation cost=$${cost}`);
+  logger.debug(`[animations] instructAnimation cost=$${cost}`);
   await checkSpendLimit(userId, req.user!.role, cost);
 
   const brief = campaign.brief as StructuredBrief;
   const currentOutput = JSON.stringify((existing.content as { animationConfig?: object }).animationConfig ?? {});
   const styleContext = await getUserStyleContext(userId);
-  console.log('[animations] Rewriting prompt and generating new config...');
+  logger.debug('[animations] Rewriting prompt and generating new config...');
   const newPrompt = await rewritePrompt(existing.promptUsed, currentOutput, instruction);
 
   const animationConfig = await generateAnimationConfig(brief, existing.platform, instruction, styleContext);
-  console.log(`[animations] instructAnimation animationConfig elements=${(animationConfig as { elements?: unknown[] }).elements?.length ?? 0}`);
+  logger.debug(`[animations] instructAnimation animationConfig elements=${(animationConfig as { elements?: unknown[] }).elements?.length ?? 0}`);
   await recordSpend(userId, cost);
 
   const [generation] = await db
@@ -117,6 +118,6 @@ export async function instructAnimationHandler(req: Request, res: Response): Pro
     })
     .returning();
 
-  console.log(`[animations] Saved instructed generation id=${generation.id}`);
+  logger.debug(`[animations] Saved instructed generation id=${generation.id}`);
   res.status(201).json({ ...generation, costUsd: cost });
 }

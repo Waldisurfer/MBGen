@@ -11,6 +11,7 @@ import { CLAUDE_COSTS } from '../config/models';
 import { getUserStyleContext } from './styles.controller';
 import { db } from '../db/client';
 import { brands } from '../db/schema';
+import { logger } from '../lib/logger.js';
 
 async function resolveBrandInfo(userId: string, brandId: string | undefined, inlineBrandInfo: string): Promise<string> {
   if (!brandId) return inlineBrandInfo;
@@ -72,12 +73,12 @@ export async function suggestBannerContent(req: Request, res: Response): Promise
   const userId = req.user!.userId;
   const brandInfo = await resolveBrandInfo(userId, brandId, inlineBrandInfo);
   const cost = CLAUDE_COSTS.bannerSuggest;
-  console.log(`[banner] suggestBannerContent userId=${userId} brandInfo="${brandInfo.slice(0, 80)}..." cost=$${cost}`);
+  logger.debug(`[banner] suggestBannerContent userId=${userId} brandInfo="${brandInfo.slice(0, 80)}..." cost=$${cost}`);
   await checkSpendLimit(userId, req.user!.role, cost);
   const styleContext = await getUserStyleContext(userId);
-  console.log(`[banner] hasStyleContext=${!!styleContext} — calling Claude`);
+  logger.debug(`[banner] hasStyleContext=${!!styleContext} — calling Claude`);
   const suggestions = await generateBannerSuggestions(brandInfo, GRADIENT_IDS.join(', '), styleContext);
-  console.log(`[banner] Got ${suggestions.headlines.length} headlines, ${suggestions.marketingAngles.length} angles`);
+  logger.debug(`[banner] Got ${suggestions.headlines.length} headlines, ${suggestions.marketingAngles.length} angles`);
   await recordSpend(userId, cost);
   res.json({ ...suggestions, costUsd: cost });
 }
@@ -96,11 +97,11 @@ export async function createBanners(req: Request, res: Response): Promise<void> 
   const userId = req.user!.userId;
   const brandInfo = await resolveBrandInfo(userId, brandId, inlineBrandInfo);
   const cost = CLAUDE_COSTS.bannerGenerate;
-  console.log(`[banner] createBanners userId=${userId} count=${count} hasRefinement=${!!refinement}`);
+  logger.debug(`[banner] createBanners userId=${userId} count=${count} hasRefinement=${!!refinement}`);
   await checkSpendLimit(userId, req.user!.role, cost);
   const styleContext = await getUserStyleContext(userId);
   const banners = await generateBannerHtml(brandInfo, count, refinement, styleContext);
-  console.log(`[banner] Created ${banners.length} HTML banners`);
+  logger.debug(`[banner] Created ${banners.length} HTML banners`);
   await recordSpend(userId, cost);
   res.json({ banners, costUsd: cost });
 }
@@ -110,13 +111,13 @@ export async function generateBannerVariations(req: Request, res: Response): Pro
   const userId = req.user!.userId;
   const brandInfo = await resolveBrandInfo(userId, brandId, inlineBrandInfo);
   const cost = CLAUDE_COSTS.bannerGenerate;
-  console.log(`[banner] generateBannerVariations userId=${userId} count=${count} mode=${mode} cost=$${cost}`);
+  logger.debug(`[banner] generateBannerVariations userId=${userId} count=${count} mode=${mode} cost=$${cost}`);
   await checkSpendLimit(userId, req.user!.role, cost);
   const styleContext = await getUserStyleContext(userId);
   const variations = await generateBannerVariationsFromClaude(
     brandInfo, count, mode, styleContext, sourceVariation
   );
-  console.log(`[banner] Generated ${variations.length} variations`);
+  logger.debug(`[banner] Generated ${variations.length} variations`);
   await recordSpend(userId, cost);
   res.json({ variations, costUsd: cost });
 }

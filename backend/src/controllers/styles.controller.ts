@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { db } from '../db/client';
 import { userProfiles } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '../lib/logger.js';
 
 function getSupabase() {
   return createClient(
@@ -54,7 +55,7 @@ export async function uploadStyleHandler(req: Request, res: Response): Promise<v
     .upload(path, file.buffer, { contentType: 'text/css', upsert: true });
 
   if (uploadError) {
-    console.error('[Styles] Upload error:', uploadError);
+    logger.error('[Styles] Upload error:', uploadError);
     res.status(500).json({ error: 'Failed to upload file' });
     return;
   }

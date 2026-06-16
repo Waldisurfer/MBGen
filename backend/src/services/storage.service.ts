@@ -1,6 +1,7 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { lookup as mimeLookup } from 'mime-types';
+import { logger } from '../lib/logger.js';
 
 let _s3: S3Client | null = null;
 function getS3(): S3Client {
@@ -26,7 +27,7 @@ export async function uploadBuffer(
   contentType: string,
   options: { disposition?: 'attachment' | 'inline' } = {}
 ): Promise<string> {
-  console.log(`[storage] uploadBuffer key=${key} contentType=${contentType} size=${buffer.length}`);
+  logger.debug(`[storage] uploadBuffer key=${key} contentType=${contentType} size=${buffer.length}`);
   await getS3().send(
     new PutObjectCommand({
       Bucket: bucket(),
@@ -37,7 +38,7 @@ export async function uploadBuffer(
     })
   );
   const url = `${publicUrl()}/${key}`;
-  console.log(`[storage] uploadBuffer done url=${url}`);
+  logger.debug(`[storage] uploadBuffer done url=${url}`);
   return url;
 }
 
@@ -45,14 +46,14 @@ export async function getPresignedUploadUrl(
   key: string,
   contentType: string
 ): Promise<string> {
-  console.log(`[storage] getPresignedUploadUrl key=${key} contentType=${contentType}`);
+  logger.debug(`[storage] getPresignedUploadUrl key=${key} contentType=${contentType}`);
   const command = new PutObjectCommand({
     Bucket: bucket(),
     Key: key,
     ContentType: contentType,
   });
   const url = await getSignedUrl(getS3(), command, { expiresIn: 300 });
-  console.log(`[storage] presigned URL generated`);
+  logger.debug(`[storage] presigned URL generated`);
   return url;
 }
 
@@ -61,7 +62,7 @@ export async function downloadAndUpload(
   key: string,
   options: { disposition?: 'attachment' | 'inline' } = {}
 ): Promise<string> {
-  console.log(`[storage] downloadAndUpload from=${sourceUrl} to=${key}`);
+  logger.debug(`[storage] downloadAndUpload from=${sourceUrl} to=${key}`);
   const response = await fetch(sourceUrl);
   if (!response.ok) throw new Error(`Failed to fetch ${sourceUrl}: ${response.statusText}`);
 
@@ -69,7 +70,7 @@ export async function downloadAndUpload(
   const contentType =
     response.headers.get('content-type') ??
     (mimeLookup(key) || 'application/octet-stream');
-  console.log(`[storage] Downloaded ${buffer.length} bytes, contentType=${contentType}`);
+  logger.debug(`[storage] Downloaded ${buffer.length} bytes, contentType=${contentType}`);
 
   return uploadBuffer(buffer, key, contentType, options);
 }
