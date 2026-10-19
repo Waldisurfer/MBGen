@@ -21,7 +21,6 @@ export const useAuthStore = defineStore('auth', () => {
   const profile   = ref<UserProfile | null>(null);
   const isLoading = ref(true);
   const error     = ref<string | null>(null);
-  const isPending = ref(false);
 
   const isAuthenticated = computed(() => !!session.value);
   const isAdmin         = computed(() => profile.value?.role === 'admin');
@@ -50,18 +49,9 @@ export const useAuthStore = defineStore('auth', () => {
       });
 
       if (!res.ok) {
-        if (res.status === 403) {
-          const body = await res.json().catch(() => ({})) as { error?: string };
-          if (body.error === 'account_pending') {
-            console.warn('[auth.store] Account pending approval');
-            isPending.value = true;
-            return;
-          }
-        }
         console.warn(`[auth.store] Profile fetch returned ${res.status} — skipping`);
         return;
       }
-      isPending.value = false;
       profile.value = (await res.json()) as UserProfile;
       console.log(`[auth.store] Profile loaded: role=${profile.value.role} spend=$${profile.value.monthlySpendUsd}`);
     } catch (err) {
@@ -111,7 +101,6 @@ export const useAuthStore = defineStore('auth', () => {
     if (data.session) {
       session.value = data.session;
       user.value = data.session.user;
-      await fetchProfile();
     }
   }
 
@@ -133,7 +122,6 @@ export const useAuthStore = defineStore('auth', () => {
     console.log('[auth.store] signOut');
     await supabase.auth.signOut();
     profile.value = null;
-    isPending.value = false;
   }
 
   async function refreshProfile(): Promise<void> {
@@ -142,7 +130,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     session, user, profile, isLoading, error,
-    isAuthenticated, isAdmin, monthlySpend, spendPercent, atLimit, isPending,
+    isAuthenticated, isAdmin, monthlySpend, spendPercent, atLimit,
     init, signIn, signUp, signOut, refreshProfile,
   };
 });

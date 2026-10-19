@@ -2,11 +2,10 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { and, eq, desc } from 'drizzle-orm';
 import { db } from '../db/client';
-import { campaigns, brands, audiences } from '../db/schema';
+import { campaigns } from '../db/schema';
 import { parseCampaignBrief, parseStrategyDocument } from '../services/claude.service';
 import { uploadBuffer, getPresignedUploadUrl, generateKey } from '../services/storage.service';
 import type { CampaignFormData } from '../types/api.types';
-import { logger } from '../lib/logger.js';
 
 const AudienceSchema = z.object({
   demographics: z.string().min(1),
@@ -26,30 +25,27 @@ const BrandSchema = z.object({
 const CampaignSchema = z.object({
   name: z.string().min(1),
   strategy: z.string().min(10),
-  audience: AudienceSchema.optional(),
-  audienceId: z.string().uuid().optional(),
-  brand: BrandSchema.optional(),
-  brandId: z.string().uuid().optional(),
+  audience: AudienceSchema,
+  brand: BrandSchema,
   inspirationKeys: z.array(z.string()),
-}).refine(d => d.audience || d.audienceId, { message: 'audience or audienceId is required' })
-  .refine(d => d.brand || d.brandId, { message: 'brand or brandId is required' });
+});
 
 export async function listCampaigns(req: Request, res: Response): Promise<void> {
   const userId = req.user!.userId;
-  logger.debug(`[campaigns] listCampaigns for userId=${userId}`);
+  console.log(`[campaigns] listCampaigns for userId=${userId}`);
   const result = await db
     .select()
     .from(campaigns)
     .where(eq(campaigns.userId, userId))
     .orderBy(desc(campaigns.createdAt));
-  logger.debug(`[campaigns] Found ${result.length} campaigns`);
+  console.log(`[campaigns] Found ${result.length} campaigns`);
   res.json(result);
 }
 
 export async function getCampaign(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   const userId = req.user!.userId;
-  logger.debug(`[campaigns] getCampaign id=${id} userId=${userId}`);
+  console.log(`[campaigns] getCampaign id=${id} userId=${userId}`);
   const campaign = await db
     .select()
     .from(campaigns)
@@ -60,95 +56,36 @@ export async function getCampaign(req: Request, res: Response): Promise<void> {
     .limit(1);
 
   if (!campaign[0]) {
-    logger.warn(`[campaigns] Campaign ${id} not found for user ${userId}`);
+    console.warn(`[campaigns] Campaign ${id} not found for user ${userId}`);
     res.status(404).json({ error: 'Campaign not found' });
     return;
   }
-  logger.debug(`[campaigns] Found campaign: ${campaign[0].name}`);
+  console.log(`[campaigns] Found campaign: ${campaign[0].name}`);
   res.json(campaign[0]);
 }
 
 export async function createCampaign(req: Request, res: Response): Promise<void> {
-  const body = CampaignSchema.parse(req.body);
-  const userId = req.user!.userId;
-  logger.debug(`[campaigns] createCampaign name="${body.name}" userId=${userId}`);
-
-  // Resolve audience — from library or inline
-  let audienceData: { demographics: string; psychographics: string; painPoints: string; channels: string[] };
-  let resolvedAudienceId: string | undefined;
-
-  if (body.audienceId) {
-    const [saved] = await db
-      .select()
-      .from(audiences)
-      .where(and(eq(audiences.id, body.audienceId), eq(audiences.userId, userId)))
-      .limit(1);
-    if (!saved) { res.status(400).json({ error: 'Audience not found' }); return; }
-    audienceData = {
-      demographics: saved.demographics,
-      psychographics: saved.psychographics,
-      painPoints: saved.painPoints,
-      channels: saved.channels,
-    };
-    resolvedAudienceId = saved.id;
-    await db.update(audiences).set({ lastUsedAt: new Date() }).where(eq(audiences.id, saved.id));
-  } else {
-    audienceData = body.audience!;
-  }
-
-  // Resolve brand — from library or inline
-  let brandData: { name: string; tone: string; colors: string[]; fonts: string[]; logoKey?: string };
-  let resolvedBrandId: string | undefined;
-
-  if (body.brandId) {
-    const [saved] = await db
-      .select()
-      .from(brands)
-      .where(and(eq(brands.id, body.brandId), eq(brands.userId, userId)))
-      .limit(1);
-    if (!saved) { res.status(400).json({ error: 'Brand not found' }); return; }
-    brandData = {
-      name: saved.name,
-      tone: saved.tone,
-      colors: saved.colors,
-      fonts: saved.fonts,
-      ...(saved.logoKey ? { logoKey: saved.logoKey } : {}),
-    };
-    resolvedBrandId = saved.id;
-    await db.update(brands).set({ lastUsedAt: new Date() }).where(eq(brands.id, saved.id));
-  } else {
-    brandData = body.brand!;
-  }
-
-  // Build form data for brief parsing
-  const formData: CampaignFormData = {
-    name: body.name,
-    strategy: body.strategy,
-    audience: audienceData,
-    brand: brandData,
-    inspirationKeys: body.inspirationKeys,
-  };
+  const body = CampaignSchema.parse(req.body) as CampaignFormData;
+  console.log(`[campaigns] createCampaign name="${body.name}" userId=${req.user!.userId}`);
 
   // Parse structured brief via Claude (synchronous, ~3-5s)
-  logger.debug('[campaigns] Parsing brief via Claude...');
-  const brief = await parseCampaignBrief(formData);
-  logger.debug('[campaigns] Brief parsed:', JSON.stringify(brief).slice(0, 200));
+  console.log('[campaigns] Parsing brief via Claude...');
+  const brief = await parseCampaignBrief(body);
+  console.log('[campaigns] Brief parsed:', JSON.stringify(brief).slice(0, 200));
 
   const [campaign] = await db
     .insert(campaigns)
     .values({
-      userId,
+      userId: req.user!.userId,
       name: body.name,
       strategy: body.strategy,
-      audience: audienceData,
-      brand: brandData,
+      audience: body.audience,
+      brand: body.brand,
       brief,
-      ...(resolvedBrandId ? { brandId: resolvedBrandId } : {}),
-      ...(resolvedAudienceId ? { audienceId: resolvedAudienceId } : {}),
     })
     .returning();
 
-  logger.debug(`[campaigns] Created campaign id=${campaign.id}`);
+  console.log(`[campaigns] Created campaign id=${campaign.id}`);
   res.status(201).json(campaign);
 }
 
@@ -157,9 +94,9 @@ export async function parseStrategy(req: Request, res: Response): Promise<void> 
     .object({ document: z.string().min(50, 'Document is too short') })
     .parse(req.body);
 
-  logger.debug(`[campaigns] parseStrategy document length=${document.length}`);
+  console.log(`[campaigns] parseStrategy document length=${document.length}`);
   const suggestions = await parseStrategyDocument(document);
-  logger.debug(`[campaigns] parseStrategy returned ${suggestions.length} suggestions`);
+  console.log(`[campaigns] parseStrategy returned ${suggestions.length} suggestions`);
   res.json({ suggestions });
 }
 
@@ -168,28 +105,28 @@ export async function getUploadUrl(req: Request, res: Response): Promise<void> {
     .object({ filename: z.string().min(1), contentType: z.string().min(1) })
     .parse(req.query);
 
-  logger.debug(`[campaigns] getUploadUrl filename=${filename} contentType=${contentType}`);
+  console.log(`[campaigns] getUploadUrl filename=${filename} contentType=${contentType}`);
   const ext = filename.split('.').pop() ?? 'bin';
   const key = generateKey('inspirations', `${Date.now()}-${Math.random().toString(36).slice(2)}`, ext);
   const presignedUrl = await getPresignedUploadUrl(key, contentType as string);
 
-  logger.debug(`[campaigns] Presigned URL generated for key=${key}`);
+  console.log(`[campaigns] Presigned URL generated for key=${key}`);
   res.json({ presignedUrl, key });
 }
 
 export async function uploadInspiration(req: Request, res: Response): Promise<void> {
   if (!req.file) {
-    logger.warn('[campaigns] uploadInspiration — no file provided');
+    console.warn('[campaigns] uploadInspiration — no file provided');
     res.status(400).json({ error: 'No file provided' });
     return;
   }
 
-  logger.debug(`[campaigns] uploadInspiration file=${req.file.originalname} size=${req.file.size}`);
+  console.log(`[campaigns] uploadInspiration file=${req.file.originalname} size=${req.file.size}`);
   const contentType = req.file.mimetype;
   const ext = (req.file.originalname.split('.').pop() ?? 'bin').toLowerCase();
   const key = generateKey('inspirations', `${Date.now()}-${Math.random().toString(36).slice(2)}`, ext);
   const url = await uploadBuffer(req.file.buffer, key, contentType);
 
-  logger.debug(`[campaigns] Uploaded inspiration key=${key} url=${url}`);
+  console.log(`[campaigns] Uploaded inspiration key=${key} url=${url}`);
   res.json({ key, url });
 }

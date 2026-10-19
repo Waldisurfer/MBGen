@@ -27,8 +27,6 @@ import historyRouter from './routes/history';
 import bannerRouter from './routes/banner';
 import adminRouter from './routes/admin';
 import stylesRouter from './routes/styles';
-import brandsRouter from './routes/brands';
-import audiencesRouter from './routes/audiences';
 import { authMiddleware } from './middleware/auth.middleware';
 
 const app = express();
@@ -67,8 +65,6 @@ app.use('/api/history', historyRouter);
 app.use('/api/banner', bannerRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/styles', stylesRouter);
-app.use('/api/brands', brandsRouter);
-app.use('/api/audiences', audiencesRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({

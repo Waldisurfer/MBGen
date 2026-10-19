@@ -11,7 +11,6 @@ const email    = ref('');
 const password = ref('');
 const loading  = ref(false);
 const message  = ref('');
-const pending  = ref(false);
 
 function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
   return Promise.race([
@@ -25,7 +24,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T
 async function submit() {
   loading.value = true;
   message.value = '';
-  pending.value = false;
   try {
     if (tab.value === 'signin') {
       await withTimeout(
@@ -35,11 +33,6 @@ async function submit() {
       );
     } else {
       await auth.signUp(email.value, password.value);
-    }
-    if (auth.isPending) {
-      pending.value = true;
-      await auth.signOut();
-      return;
     }
     router.push('/dashboard');
   } catch (err) {
@@ -108,10 +101,7 @@ async function submit() {
             />
           </div>
 
-          <p v-if="pending" class="text-xs rounded-lg px-3 py-2 bg-amber-50 text-amber-700">
-            Your account is pending approval. An admin will review your request.
-          </p>
-          <p v-else-if="message" class="text-xs rounded-lg px-3 py-2 bg-red-50 text-red-600">
+          <p v-if="message" class="text-xs rounded-lg px-3 py-2 bg-red-50 text-red-600">
             {{ message }}
           </p>
 

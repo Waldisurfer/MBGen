@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import type {
-import { logger } from '../lib/logger.js';
   CampaignFormData,
   StructuredBrief,
   GsapAnimationConfig,
@@ -21,7 +20,7 @@ function getText(response: Anthropic.Message): string {
 }
 
 export async function parseCampaignBrief(formData: CampaignFormData): Promise<StructuredBrief> {
-  logger.debug(`[claude] parseCampaignBrief name="${formData.name}"`);
+  console.log(`[claude] parseCampaignBrief name="${formData.name}"`);
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
@@ -53,7 +52,7 @@ Return ONLY valid JSON with this exact shape:
   });
 
   const text = getText(response);
-  logger.debug(`[claude] parseCampaignBrief raw response length=${text.length}`);
+  console.log(`[claude] parseCampaignBrief raw response length=${text.length}`);
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('No JSON found in Claude response');
   return JSON.parse(jsonMatch[0]) as StructuredBrief;
@@ -65,7 +64,7 @@ export async function generateCopy(
   instruction?: string,
   styleContext?: string
 ): Promise<string> {
-  logger.debug(`[claude] generateCopy platform=${platform} hasInstruction=${!!instruction} hasStyle=${!!styleContext}`);
+  console.log(`[claude] generateCopy platform=${platform} hasInstruction=${!!instruction} hasStyle=${!!styleContext}`);
   const instructionClause = instruction
     ? `\n\nUser refinement instruction: "${instruction}". Apply this to the output.`
     : '';
@@ -102,7 +101,7 @@ export async function generateAnimationConfig(
   instruction?: string,
   styleContext?: string
 ): Promise<GsapAnimationConfig> {
-  logger.debug(`[claude] generateAnimationConfig platform=${platform} hasInstruction=${!!instruction} hasStyle=${!!styleContext}`);
+  console.log(`[claude] generateAnimationConfig platform=${platform} hasInstruction=${!!instruction} hasStyle=${!!styleContext}`);
   const instructionClause = instruction
     ? `\n\nUser refinement: "${instruction}". Apply this to the animation.`
     : '';
@@ -161,7 +160,7 @@ export async function rewritePrompt(
   currentOutput: string,
   instruction: string
 ): Promise<string> {
-  logger.debug(`[claude] rewritePrompt instruction="${instruction}"`);
+  console.log(`[claude] rewritePrompt instruction="${instruction}"`);
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 512,
@@ -190,7 +189,7 @@ Return ONLY the rewritten prompt text. No explanation, no preamble.`,
 export async function parseStrategyDocument(
   rawDocument: string
 ): Promise<ParsedCampaignSuggestion[]> {
-  logger.debug(`[claude] parseStrategyDocument length=${rawDocument.length}`);
+  console.log(`[claude] parseStrategyDocument length=${rawDocument.length}`);
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
@@ -268,7 +267,7 @@ export async function generateBannerSuggestions(
   gradientNames: string,
   styleContext?: string,
 ): Promise<BannerSuggestions> {
-  logger.debug(`[claude] generateBannerSuggestions brandInfo="${brandInfo.slice(0, 60)}..." hasStyle=${!!styleContext}`);
+  console.log(`[claude] generateBannerSuggestions brandInfo="${brandInfo.slice(0, 60)}..." hasStyle=${!!styleContext}`);
   const styleClause = styleContext
     ? `\n\nBrand style guidelines (follow these in your suggestions):\n${styleContext}`
     : '';
@@ -322,7 +321,7 @@ export async function generateBannerHtml(
   refinement?: string,
   styleContext?: string,
 ): Promise<GeneratedBannerHtml[]> {
-  logger.debug(`[claude] generateBannerHtml count=${count} hasRefinement=${!!refinement} hasStyle=${!!styleContext}`);
+  console.log(`[claude] generateBannerHtml count=${count} hasRefinement=${!!refinement} hasStyle=${!!styleContext}`);
 
   const refinementClause = refinement
     ? `\n\nUser refinement request: "${refinement}"\nApply this change across all banners.`
@@ -358,7 +357,7 @@ Return ONLY valid JSON, no markdown:
   );
 
   const text = getText(response);
-  logger.debug(`[claude] generateBannerHtml raw response (first 300 chars): ${text.slice(0, 300)}`);
+  console.log(`[claude] generateBannerHtml raw response (first 300 chars): ${text.slice(0, 300)}`);
 
   // Strip markdown code fences if present
   const stripped = text
@@ -368,8 +367,8 @@ Return ONLY valid JSON, no markdown:
 
   const match = stripped.match(/\[[\s\S]*\]/);
   if (!match) {
-    logger.error('[claude] generateBannerHtml: no JSON array found in response');
-    logger.error('[claude] Full response:', text);
+    console.error('[claude] generateBannerHtml: no JSON array found in response');
+    console.error('[claude] Full response:', text);
     return [];
   }
 
@@ -377,8 +376,8 @@ Return ONLY valid JSON, no markdown:
   try {
     parsed = JSON.parse(match[0]);
   } catch (e) {
-    logger.error('[claude] generateBannerHtml: JSON.parse failed:', (e as Error).message);
-    logger.error('[claude] Attempted to parse:', match[0].slice(0, 500));
+    console.error('[claude] generateBannerHtml: JSON.parse failed:', (e as Error).message);
+    console.error('[claude] Attempted to parse:', match[0].slice(0, 500));
     return [];
   }
 
@@ -437,7 +436,7 @@ export async function generateBannerVariationsFromClaude(
   styleContext?: string,
   sourceVariation?: BannerVariationSpec,
 ): Promise<BannerVariationSpec[]> {
-  logger.debug(`[claude] generateBannerVariations count=${count} mode=${mode} hasStyle=${!!styleContext} hasSource=${!!sourceVariation}`);
+  console.log(`[claude] generateBannerVariations count=${count} mode=${mode} hasStyle=${!!styleContext} hasSource=${!!sourceVariation}`);
 
   const styleClause = styleContext
     ? `\n\nBrand style guidelines (follow these):\n${styleContext}`
@@ -493,7 +492,7 @@ Return ONLY a valid JSON array, no markdown, no explanation:
   const text = getText(response);
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) {
-    logger.warn('[claude] generateBannerVariations: no JSON array found, returning fallbacks');
+    console.warn('[claude] generateBannerVariations: no JSON array found, returning fallbacks');
     return Array.from({ length: count }, () => ({ ...FALLBACK_VARIATION }));
   }
 
@@ -501,7 +500,7 @@ Return ONLY a valid JSON array, no markdown, no explanation:
   try {
     parsed = JSON.parse(match[0]);
   } catch {
-    logger.warn('[claude] generateBannerVariations: JSON parse failed, returning fallbacks');
+    console.warn('[claude] generateBannerVariations: JSON parse failed, returning fallbacks');
     return Array.from({ length: count }, () => ({ ...FALLBACK_VARIATION }));
   }
 

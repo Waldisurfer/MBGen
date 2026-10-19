@@ -12,7 +12,6 @@ import { rewritePrompt } from '../services/claude.service';
 import { checkSpendLimit, recordSpend } from '../utils/spend';
 import { IMAGE_MODELS, DEFAULT_IMAGE_MODEL_ID, CLAUDE_COSTS, type AspectRatio } from '../config/models';
 import type { StructuredBrief } from '../types/api.types';
-import { logger } from '../lib/logger.js';
 
 const GenerateSchema = z.object({
   campaignId: z.string().uuid(),
@@ -42,11 +41,11 @@ export async function generateImageHandler(req: Request, res: Response): Promise
   const { campaignId, platform, modelId: rawModelId } = GenerateSchema.parse(req.body);
   const modelId = rawModelId ?? DEFAULT_IMAGE_MODEL_ID;
   const userId = req.user!.userId;
-  logger.debug(`[images] generateImage campaignId=${campaignId} platform=${platform} modelId=${modelId} userId=${userId}`);
+  console.log(`[images] generateImage campaignId=${campaignId} platform=${platform} modelId=${modelId} userId=${userId}`);
 
   const modelConfig = IMAGE_MODELS.find(m => m.id === modelId);
   const estimatedCost = modelConfig?.estimatedCostUsd ?? 0.04;
-  logger.debug(`[images] estimatedCost=$${estimatedCost}`);
+  console.log(`[images] estimatedCost=$${estimatedCost}`);
   await checkSpendLimit(userId, req.user!.role, estimatedCost);
 
   const [campaign] = await db
@@ -56,16 +55,16 @@ export async function generateImageHandler(req: Request, res: Response): Promise
     .limit(1);
 
   if (!campaign) {
-    logger.warn(`[images] Campaign ${campaignId} not found`);
+    console.warn(`[images] Campaign ${campaignId} not found`);
     res.status(404).json({ error: 'Campaign not found' });
     return;
   }
 
   const brief = campaign.brief as StructuredBrief;
   const prompt = buildImagePrompt(brief, platform);
-  logger.debug(`[images] Built prompt: "${prompt.slice(0, 100)}..."`);
+  console.log(`[images] Built prompt: "${prompt.slice(0, 100)}..."`);
 
-  logger.debug(`[images] Starting Replicate prediction with model=${modelId}`);
+  console.log(`[images] Starting Replicate prediction with model=${modelId}`);
   const { predictionId } = await startImageGeneration(prompt, '1:1', modelId);
 
   const [generation] = await db
@@ -84,14 +83,14 @@ export async function generateImageHandler(req: Request, res: Response): Promise
     })
     .returning();
 
-  logger.debug(`[images] Created generation id=${generation.id} predictionId=${predictionId}`);
+  console.log(`[images] Created generation id=${generation.id} predictionId=${predictionId}`);
   res.status(201).json({ ...generation, predictionId, estimatedCostUsd: estimatedCost });
 }
 
 export async function imageStatusHandler(req: Request, res: Response): Promise<void> {
   const { predictionId } = StatusSchema.parse(req.params);
   const userId = req.user!.userId;
-  logger.debug(`[images] imageStatus predictionId=${predictionId} userId=${userId}`);
+  console.log(`[images] imageStatus predictionId=${predictionId} userId=${userId}`);
 
   const [generation] = await db
     .select()
@@ -100,14 +99,14 @@ export async function imageStatusHandler(req: Request, res: Response): Promise<v
     .limit(1);
 
   const result = await getImagePrediction(predictionId);
-  logger.debug(`[images] Replicate status=${result.status} outputUrl=${result.outputUrl ?? 'none'}`);
+  console.log(`[images] Replicate status=${result.status} outputUrl=${result.outputUrl ?? 'none'}`);
 
   if (result.status === 'succeeded' && result.outputUrl && generation) {
-    logger.debug(`[images] Succeeded — downloading and uploading to R2`);
+    console.log(`[images] Succeeded — downloading and uploading to R2`);
     const key = generateKey('images', generation.id, 'webp');
     const imageUrl = await downloadAndUpload(result.outputUrl, key);
     const actualCost = parseFloat(generation.estimatedCostUsd ?? '0.04');
-    logger.debug(`[images] Uploaded to R2: ${imageUrl}, actualCost=$${actualCost}`);
+    console.log(`[images] Uploaded to R2: ${imageUrl}, actualCost=$${actualCost}`);
 
     await db
       .update(generations)
@@ -121,7 +120,7 @@ export async function imageStatusHandler(req: Request, res: Response): Promise<v
   }
 
   if (result.status === 'failed' && generation) {
-    logger.warn(`[images] Prediction ${predictionId} failed: ${result.error}`);
+    console.warn(`[images] Prediction ${predictionId} failed: ${result.error}`);
     await db
       .update(generations)
       .set({ status: 'failed' })
@@ -136,22 +135,22 @@ export async function generatePromptHandler(req: Request, res: Response): Promis
   const modelId = rawModelId ?? DEFAULT_IMAGE_MODEL_ID;
   const ar = (aspectRatio ?? '1:1') as AspectRatio;
   const userId = req.user!.userId;
-  logger.debug(`[images] generatePrompt modelId=${modelId} ar=${ar} userId=${userId} prompt="${prompt.slice(0, 80)}..."`);
+  console.log(`[images] generatePrompt modelId=${modelId} ar=${ar} userId=${userId} prompt="${prompt.slice(0, 80)}..."`);
 
   const modelConfig = IMAGE_MODELS.find(m => m.id === modelId);
   const estimatedCost = modelConfig?.estimatedCostUsd ?? 0.04;
   await checkSpendLimit(userId, req.user!.role, estimatedCost);
 
   const { predictionId } = await startImageGeneration(prompt, ar, modelId);
-  logger.debug(`[images] generatePrompt started predictionId=${predictionId}`);
+  console.log(`[images] generatePrompt started predictionId=${predictionId}`);
   res.status(201).json({ predictionId, modelId, estimatedCostUsd: estimatedCost });
 }
 
 export async function quickStatusHandler(req: Request, res: Response): Promise<void> {
   const { predictionId } = StatusSchema.parse(req.params);
-  logger.debug(`[images] quickStatus predictionId=${predictionId}`);
+  console.log(`[images] quickStatus predictionId=${predictionId}`);
   const result = await getImagePrediction(predictionId);
-  logger.debug(`[images] quickStatus status=${result.status}`);
+  console.log(`[images] quickStatus status=${result.status}`);
 
   if (result.status === 'succeeded' && result.outputUrl) {
     // Record spend — use default model cost as estimation for direct prompts
@@ -170,15 +169,15 @@ export async function quickStatusHandler(req: Request, res: Response): Promise<v
       process.env.R2_BUCKET_NAME &&
       process.env.R2_PUBLIC_URL
     );
-    logger.debug(`[images] quickStatus r2Ready=${r2Ready}`);
+    console.log(`[images] quickStatus r2Ready=${r2Ready}`);
 
     if (r2Ready) {
       const key = generateKey('images/direct', predictionId, 'webp');
       const imageUrl = await downloadAndUpload(result.outputUrl, key);
-      logger.debug(`[images] quickStatus uploaded to R2: ${imageUrl}`);
+      console.log(`[images] quickStatus uploaded to R2: ${imageUrl}`);
       res.json({ status: 'completed', imageUrl });
     } else {
-      logger.debug(`[images] quickStatus R2 not ready, returning raw URL`);
+      console.log(`[images] quickStatus R2 not ready, returning raw URL`);
       res.json({ status: 'completed', imageUrl: result.outputUrl });
     }
     return;
@@ -190,7 +189,7 @@ export async function quickStatusHandler(req: Request, res: Response): Promise<v
 export async function instructImageHandler(req: Request, res: Response): Promise<void> {
   const { generationId, instruction, modelId: requestModelId } = InstructSchema.parse(req.body);
   const userId = req.user!.userId;
-  logger.debug(`[images] instructImage generationId=${generationId} instruction="${instruction}" userId=${userId}`);
+  console.log(`[images] instructImage generationId=${generationId} instruction="${instruction}" userId=${userId}`);
 
   const [existing] = await db
     .select()
@@ -199,22 +198,22 @@ export async function instructImageHandler(req: Request, res: Response): Promise
     .limit(1);
 
   if (!existing) {
-    logger.warn(`[images] instructImage — generation ${generationId} not found`);
+    console.warn(`[images] instructImage — generation ${generationId} not found`);
     res.status(404).json({ error: 'Generation not found' });
     return;
   }
 
   // Inherit model from existing generation unless overridden
   const modelId = requestModelId ?? existing.model ?? DEFAULT_IMAGE_MODEL_ID;
-  logger.debug(`[images] instructImage using modelId=${modelId}`);
+  console.log(`[images] instructImage using modelId=${modelId}`);
 
   const currentOutput = (existing.content as { imageUrl?: string }).imageUrl ?? '';
-  logger.debug('[images] Rewriting prompt...');
+  console.log('[images] Rewriting prompt...');
   const newPrompt = await rewritePrompt(existing.promptUsed, currentOutput, instruction);
-  logger.debug(`[images] New prompt: "${newPrompt.slice(0, 100)}..."`);
+  console.log(`[images] New prompt: "${newPrompt.slice(0, 100)}..."`);
 
   const { predictionId } = await startImageGeneration(newPrompt, '1:1', modelId);
-  logger.debug(`[images] instructImage started predictionId=${predictionId}`);
+  console.log(`[images] instructImage started predictionId=${predictionId}`);
 
   const [generation] = await db
     .insert(generations)
@@ -231,7 +230,7 @@ export async function instructImageHandler(req: Request, res: Response): Promise
     })
     .returning();
 
-  logger.debug(`[images] instructImage created generation id=${generation.id}`);
+  console.log(`[images] instructImage created generation id=${generation.id}`);
   res.status(201).json({ ...generation, predictionId });
 }
 

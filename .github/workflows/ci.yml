@@ -2,13 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
-  typecheck:
-    name: Type Check
+  build:
+    name: Typecheck & Build
     runs-on: ubuntu-latest
 
     steps:
@@ -20,10 +20,20 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Type check frontend
-        run: npx tsc --noEmit -p frontend/tsconfig.json
+      - name: Typecheck backend
+        run: npx tsc --noEmit
+        working-directory: backend
 
-      - name: Type check backend
-        run: npx tsc --noEmit -p backend/tsconfig.json
+      - name: Build backend
+        run: npm run build
+        working-directory: backend
+
+      - name: Build frontend (includes vue-tsc)
+        run: npm run build
+        working-directory: frontend
+        env:
+          VITE_API_URL: /api
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder

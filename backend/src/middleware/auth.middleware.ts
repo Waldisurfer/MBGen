@@ -4,7 +4,6 @@ import { Request, Response, NextFunction } from 'express';
 import { db } from '../db/client';
 import { userProfiles } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { logger } from '../lib/logger.js';
 
 export interface AuthUser {
   userId: string;
@@ -55,9 +54,9 @@ async function getPublicKey(kid: string): Promise<string> {
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  logger.debug(`[auth] ${req.method} ${req.path} — token present: ${!!token}`);
+  console.log(`[auth] ${req.method} ${req.path} — token present: ${!!token}`);
   if (!token) {
-    logger.warn('[auth] No token provided');
+    console.warn('[auth] No token provided');
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
@@ -72,37 +71,30 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     const payload = jwt.verify(token, publicKey, { algorithms: ['ES256'] }) as jwt.JwtPayload;
     const userId = payload.sub!;
     const email: string = (payload.email as string | undefined) ?? '';
-    logger.debug(`[auth] Verified user: ${userId} (${email})`);
+    console.log(`[auth] Verified user: ${userId} (${email})`);
 
     stage = 'db_profile_lookup';
     let profile = await db.query.userProfiles.findFirst({ where: eq(userProfiles.userId, userId) });
     if (!profile) {
-      logger.debug(`[auth] No profile found for ${userId} — creating`);
+      console.log(`[auth] No profile found for ${userId} — creating`);
       const adminEmails = (process.env.ADMIN_EMAILS ?? '')
         .split(',')
         .map((e) => e.trim().toLowerCase())
         .filter(Boolean);
       const role = adminEmails.includes(email.toLowerCase()) ? 'admin' : 'user';
-      const status = role === 'admin' ? 'active' : 'pending';
-      logger.debug(`[auth] Assigning role: ${role}, status: ${status}`);
-      [profile] = await db.insert(userProfiles).values({ userId, role, status }).returning();
+      console.log(`[auth] Assigning role: ${role}`);
+      [profile] = await db.insert(userProfiles).values({ userId, role }).returning();
     }
 
     // Reset monthly spend if calendar month has changed
     const now = new Date();
     const resetAt = new Date(profile.monthlyResetAt);
     if (now.getMonth() !== resetAt.getMonth() || now.getFullYear() !== resetAt.getFullYear()) {
-      logger.debug(`[auth] Resetting monthly spend for ${userId}`);
+      console.log(`[auth] Resetting monthly spend for ${userId}`);
       [profile] = await db.update(userProfiles)
         .set({ monthlySpendUsd: '0', monthlyResetAt: now })
         .where(eq(userProfiles.userId, userId))
         .returning();
-    }
-
-    if (profile.status !== 'active') {
-      logger.warn(`[auth] Account not active for ${userId} (status=${profile.status})`);
-      res.status(403).json({ error: 'account_pending', message: 'Your account is awaiting approval.' });
-      return;
     }
 
     req.user = {
@@ -110,11 +102,11 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       role: profile.role as 'admin' | 'user',
       monthlySpendUsd: parseFloat(profile.monthlySpendUsd ?? '0'),
     };
-    logger.debug(`[auth] req.user set: role=${req.user.role}, spend=$${req.user.monthlySpendUsd}`);
+    console.log(`[auth] req.user set: role=${req.user.role}, spend=$${req.user.monthlySpendUsd}`);
     next();
   } catch (error) {
     const err = error as { message?: string; name?: string };
-    logger.error(`[auth] JWT validation failed at stage="${stage}":`, err.name, err.message);
+    console.error(`[auth] JWT validation failed at stage="${stage}":`, err.name, err.message);
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 }

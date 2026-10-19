@@ -3,7 +3,6 @@ import {
   listUsersHandler,
   resetUserSpendHandler,
   setUserRoleHandler,
-  setUserStatusHandler,
   listGenerationsHandler,
 } from '../controllers/admin.controller';
 
@@ -21,7 +20,6 @@ router.use(adminOnly);
 router.get('/users', listUsersHandler);
 router.post('/users/:id/reset-spend', resetUserSpendHandler);
 router.post('/users/:id/role', setUserRoleHandler);
-router.post('/users/:id/status', setUserStatusHandler);
 router.get('/generations', listGenerationsHandler);
 
 export default router;

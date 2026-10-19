@@ -22,7 +22,6 @@ import {
   getVideoModel,
 } from '../config/models';
 import type { StructuredBrief } from '../types/api.types';
-import { logger } from '../lib/logger.js';
 
 const GenerateSchema = z.object({
   campaignId: z.string().uuid(),
@@ -45,11 +44,11 @@ export async function generateVideoHandler(req: Request, res: Response): Promise
   const modelId = rawModelId ?? DEFAULT_VIDEO_MODEL_ID;
   const modelConfig = getVideoModel(modelId);
   const userId = req.user!.userId;
-  logger.debug(`[video] generateVideo campaignId=${campaignId} platform=${platform} modelId=${modelId} provider=${modelConfig.provider} userId=${userId}`);
+  console.log(`[video] generateVideo campaignId=${campaignId} platform=${platform} modelId=${modelId} provider=${modelConfig.provider} userId=${userId}`);
 
   // Guard: Veo 2 requires Google credentials
   if (modelConfig.provider === 'google' && !process.env.GOOGLE_GENAI_API_KEY) {
-    logger.warn('[video] GOOGLE_GENAI_API_KEY not set for Veo 2');
+    console.warn('[video] GOOGLE_GENAI_API_KEY not set for Veo 2');
     res.status(400).json({
       error: 'Veo 2 requires GOOGLE_GENAI_API_KEY to be configured in backend/.env',
     });
@@ -63,27 +62,27 @@ export async function generateVideoHandler(req: Request, res: Response): Promise
     .limit(1);
 
   if (!campaign) {
-    logger.warn(`[video] Campaign ${campaignId} not found`);
+    console.warn(`[video] Campaign ${campaignId} not found`);
     res.status(404).json({ error: 'Campaign not found' });
     return;
   }
 
   const brief = campaign.brief as StructuredBrief;
   const prompt = buildVideoPrompt(brief, platform);
-  logger.debug(`[video] Prompt: "${prompt.slice(0, 100)}..."`);
+  console.log(`[video] Prompt: "${prompt.slice(0, 100)}..."`);
 
   let externalJobId: string;
 
   if (modelConfig.provider === 'google') {
-    logger.debug('[video] Starting Google Veo generation...');
+    console.log('[video] Starting Google Veo generation...');
     const { operationName } = await startVideoGeneration(prompt);
     externalJobId = operationName;
-    logger.debug(`[video] Google operation: ${operationName}`);
+    console.log(`[video] Google operation: ${operationName}`);
   } else {
-    logger.debug(`[video] Starting Replicate generation with model=${modelConfig.replicateModel}`);
+    console.log(`[video] Starting Replicate generation with model=${modelConfig.replicateModel}`);
     const { predictionId } = await startReplicateVideoGeneration(prompt, modelConfig.replicateModel!);
     externalJobId = predictionId;
-    logger.debug(`[video] Replicate predictionId: ${predictionId}`);
+    console.log(`[video] Replicate predictionId: ${predictionId}`);
   }
 
   const [generation] = await db
@@ -101,7 +100,7 @@ export async function generateVideoHandler(req: Request, res: Response): Promise
     })
     .returning();
 
-  logger.debug(`[video] Created generation id=${generation.id}`);
+  console.log(`[video] Created generation id=${generation.id}`);
   res.status(201).json({ generationId: generation.id, operationName: externalJobId });
 }
 
@@ -184,24 +183,24 @@ export async function videoStatusSSE(req: Request, res: Response): Promise<void>
     try {
       if (modelConfig.provider === 'google') {
         // Veo 2 — Google long-running operations, poll every 15s
-        logger.debug(`[video] SSE polling Google operation=${generation.externalJobId}`);
+        console.log(`[video] SSE polling Google operation=${generation.externalJobId}`);
         const result = await pollVideoOperation(generation.externalJobId!);
-        logger.debug(`[video] SSE Google poll result status=${result.status}`);
+        console.log(`[video] SSE Google poll result status=${result.status}`);
         send(result);
 
         if (result.status === 'completed' && result.videoUri) {
           try {
-            logger.debug(`[video] SSE Google completed — uploading to R2`);
+            console.log(`[video] SSE Google completed — uploading to R2`);
             const key = generateKey('videos', generation.id, 'mp4');
             const videoUrl = await downloadAndUpload(result.videoUri, key, { disposition: 'attachment' });
-            logger.debug(`[video] SSE Google R2 upload done: ${videoUrl}`);
+            console.log(`[video] SSE Google R2 upload done: ${videoUrl}`);
             await db
               .update(generations)
               .set({ content: { videoUrl }, status: 'completed' })
               .where(eq(generations.id, generation.id));
             send({ status: 'completed', videoUrl });
           } catch (uploadErr) {
-            logger.error('[video] SSE Google R2 upload failed:', uploadErr);
+            console.error('[video] SSE Google R2 upload failed:', uploadErr);
             send({ status: 'failed', error: 'Failed to transfer video to storage' });
           }
           res.end();
@@ -209,7 +208,7 @@ export async function videoStatusSSE(req: Request, res: Response): Promise<void>
         }
 
         if (result.status === 'failed') {
-          logger.warn(`[video] SSE Google operation failed`);
+          console.warn(`[video] SSE Google operation failed`);
           await db
             .update(generations)
             .set({ status: 'failed' })
@@ -221,23 +220,23 @@ export async function videoStatusSSE(req: Request, res: Response): Promise<void>
         setTimeout(poll, 15_000);
       } else {
         // Replicate video models — poll every 5s (faster turnaround)
-        logger.debug(`[video] SSE polling Replicate predictionId=${generation.externalJobId}`);
+        console.log(`[video] SSE polling Replicate predictionId=${generation.externalJobId}`);
         const result = await getReplicateVideoPrediction(generation.externalJobId!);
-        logger.debug(`[video] SSE Replicate poll status=${result.status}`);
+        console.log(`[video] SSE Replicate poll status=${result.status}`);
 
         if (result.status === 'succeeded' && result.videoUrl) {
           try {
-            logger.debug(`[video] SSE Replicate succeeded — uploading to R2`);
+            console.log(`[video] SSE Replicate succeeded — uploading to R2`);
             const key = generateKey('videos', generation.id, 'mp4');
             const videoUrl = await downloadAndUpload(result.videoUrl, key, { disposition: 'attachment' });
-            logger.debug(`[video] SSE Replicate R2 upload done: ${videoUrl}`);
+            console.log(`[video] SSE Replicate R2 upload done: ${videoUrl}`);
             await db
               .update(generations)
               .set({ content: { videoUrl }, status: 'completed' })
               .where(eq(generations.id, generation.id));
             send({ status: 'completed', videoUrl });
           } catch (uploadErr) {
-            logger.error('[video] SSE Replicate R2 upload failed:', uploadErr);
+            console.error('[video] SSE Replicate R2 upload failed:', uploadErr);
             send({ status: 'failed', error: 'Failed to transfer video to storage' });
           }
           res.end();
@@ -245,7 +244,7 @@ export async function videoStatusSSE(req: Request, res: Response): Promise<void>
         }
 
         if (result.status === 'failed' || result.status === 'canceled') {
-          logger.warn(`[video] SSE Replicate failed/canceled: ${result.error}`);
+          console.warn(`[video] SSE Replicate failed/canceled: ${result.error}`);
           await db
             .update(generations)
             .set({ status: 'failed' })
@@ -260,7 +259,7 @@ export async function videoStatusSSE(req: Request, res: Response): Promise<void>
         setTimeout(poll, 5_000);
       }
     } catch (err) {
-      logger.error('[video] SSE poll error:', err);
+      console.error('[video] SSE poll error:', err);
       send({ status: 'failed', error: 'Polling error' });
       res.end();
     }

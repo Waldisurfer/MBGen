@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { and, eq } from 'drizzle-orm';
 import {
   generateBannerSuggestions,
   generateBannerVariationsFromClaude,
@@ -9,28 +8,6 @@ import {
 import { checkSpendLimit, recordSpend } from '../utils/spend';
 import { CLAUDE_COSTS } from '../config/models';
 import { getUserStyleContext } from './styles.controller';
-import { db } from '../db/client';
-import { brands } from '../db/schema';
-import { logger } from '../lib/logger.js';
-
-async function resolveBrandInfo(userId: string, brandId: string | undefined, inlineBrandInfo: string): Promise<string> {
-  if (!brandId) return inlineBrandInfo;
-  const [brand] = await db
-    .select()
-    .from(brands)
-    .where(and(eq(brands.id, brandId), eq(brands.userId, userId)))
-    .limit(1);
-  if (!brand) return inlineBrandInfo;
-  await db.update(brands).set({ lastUsedAt: new Date() }).where(eq(brands.id, brandId));
-  const parts = [
-    `Brand: ${brand.name}`,
-    brand.description,
-    `Tone: ${brand.tone}`,
-  ];
-  if (brand.colors.length) parts.push(`Colors: ${brand.colors.join(', ')}`);
-  if (brand.fonts.length) parts.push(`Fonts: ${brand.fonts.join(', ')}`);
-  return parts.join('\n');
-}
 
 const GRADIENT_IDS = [
   'royal', 'sunset', 'ocean', 'fire', 'forest', 'midnight', 'rose', 'sage',
@@ -49,75 +26,63 @@ const BannerVariationSpecSchema = z.object({
 });
 
 const SuggestSchema = z.object({
-  brandInfo: z.string().max(2000).default(''),
-  brandId: z.string().uuid().optional(),
-}).refine(d => d.brandId || d.brandInfo.trim().length >= 10, {
-  message: 'brandInfo must be at least 10 characters when no brandId is provided',
+  brandInfo: z.string().min(10, 'Brand info must be at least 10 characters').max(2000),
 });
 
 const GenerateSchema = z.object({
-  brandInfo:       z.string().max(2000).default(''),
-  brandId:         z.string().uuid().optional(),
+  brandInfo:       z.string().min(10).max(2000),
   count:           z.number().int().refine(v => [2, 4, 6, 8, 10, 12].includes(v), { message: 'count must be 2, 4, 6, 8, 10, or 12' }),
   mode:            z.enum(['fresh', 'similar', 'different']),
   sourceVariation: BannerVariationSpecSchema.optional(),
 }).refine(
   (d) => d.mode === 'fresh' || d.sourceVariation !== undefined,
   { message: 'sourceVariation is required for similar/different modes' }
-).refine(d => d.brandId || d.brandInfo.trim().length >= 10, {
-  message: 'brandInfo must be at least 10 characters when no brandId is provided',
-});
+);
 
 export async function suggestBannerContent(req: Request, res: Response): Promise<void> {
-  const { brandInfo: inlineBrandInfo, brandId } = SuggestSchema.parse(req.body);
+  const { brandInfo } = SuggestSchema.parse(req.body);
   const userId = req.user!.userId;
-  const brandInfo = await resolveBrandInfo(userId, brandId, inlineBrandInfo);
   const cost = CLAUDE_COSTS.bannerSuggest;
-  logger.debug(`[banner] suggestBannerContent userId=${userId} brandInfo="${brandInfo.slice(0, 80)}..." cost=$${cost}`);
+  console.log(`[banner] suggestBannerContent userId=${userId} brandInfo="${brandInfo.slice(0, 80)}..." cost=$${cost}`);
   await checkSpendLimit(userId, req.user!.role, cost);
   const styleContext = await getUserStyleContext(userId);
-  logger.debug(`[banner] hasStyleContext=${!!styleContext} — calling Claude`);
+  console.log(`[banner] hasStyleContext=${!!styleContext} — calling Claude`);
   const suggestions = await generateBannerSuggestions(brandInfo, GRADIENT_IDS.join(', '), styleContext);
-  logger.debug(`[banner] Got ${suggestions.headlines.length} headlines, ${suggestions.marketingAngles.length} angles`);
+  console.log(`[banner] Got ${suggestions.headlines.length} headlines, ${suggestions.marketingAngles.length} angles`);
   await recordSpend(userId, cost);
   res.json({ ...suggestions, costUsd: cost });
 }
 
 const CreateSchema = z.object({
-  brandInfo:  z.string().max(2000).default(''),
-  brandId:    z.string().uuid().optional(),
+  brandInfo:  z.string().min(10).max(2000),
   count:      z.number().int().min(1).max(6),
   refinement: z.string().max(500).optional(),
-}).refine(d => d.brandId || d.brandInfo.trim().length >= 10, {
-  message: 'brandInfo must be at least 10 characters when no brandId is provided',
 });
 
 export async function createBanners(req: Request, res: Response): Promise<void> {
-  const { brandInfo: inlineBrandInfo, brandId, count, refinement } = CreateSchema.parse(req.body);
+  const { brandInfo, count, refinement } = CreateSchema.parse(req.body);
   const userId = req.user!.userId;
-  const brandInfo = await resolveBrandInfo(userId, brandId, inlineBrandInfo);
   const cost = CLAUDE_COSTS.bannerGenerate;
-  logger.debug(`[banner] createBanners userId=${userId} count=${count} hasRefinement=${!!refinement}`);
+  console.log(`[banner] createBanners userId=${userId} count=${count} hasRefinement=${!!refinement}`);
   await checkSpendLimit(userId, req.user!.role, cost);
   const styleContext = await getUserStyleContext(userId);
   const banners = await generateBannerHtml(brandInfo, count, refinement, styleContext);
-  logger.debug(`[banner] Created ${banners.length} HTML banners`);
+  console.log(`[banner] Created ${banners.length} HTML banners`);
   await recordSpend(userId, cost);
   res.json({ banners, costUsd: cost });
 }
 
 export async function generateBannerVariations(req: Request, res: Response): Promise<void> {
-  const { brandInfo: inlineBrandInfo, brandId, count, mode, sourceVariation } = GenerateSchema.parse(req.body);
+  const { brandInfo, count, mode, sourceVariation } = GenerateSchema.parse(req.body);
   const userId = req.user!.userId;
-  const brandInfo = await resolveBrandInfo(userId, brandId, inlineBrandInfo);
   const cost = CLAUDE_COSTS.bannerGenerate;
-  logger.debug(`[banner] generateBannerVariations userId=${userId} count=${count} mode=${mode} cost=$${cost}`);
+  console.log(`[banner] generateBannerVariations userId=${userId} count=${count} mode=${mode} cost=$${cost}`);
   await checkSpendLimit(userId, req.user!.role, cost);
   const styleContext = await getUserStyleContext(userId);
   const variations = await generateBannerVariationsFromClaude(
     brandInfo, count, mode, styleContext, sourceVariation
   );
-  logger.debug(`[banner] Generated ${variations.length} variations`);
+  console.log(`[banner] Generated ${variations.length} variations`);
   await recordSpend(userId, cost);
   res.json({ variations, costUsd: cost });
 }
